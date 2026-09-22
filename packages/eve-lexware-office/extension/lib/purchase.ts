@@ -21,7 +21,7 @@ import {
   round2,
   taxFromGross,
   type PostingCategory,
-} from "@kevinludwig/lexware-office";
+} from "@kevludwig/lexware-office";
 import { defineState } from "eve/context";
 
 import type { Warning } from "./findings";

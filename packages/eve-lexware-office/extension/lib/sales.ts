@@ -21,7 +21,7 @@ import {
   type Contact,
   type LineItem,
   type SalesDocumentKind,
-} from "@kevinludwig/lexware-office";
+} from "@kevludwig/lexware-office";
 import { z } from "zod";
 
 import { describeWarning, notesOf, saveWarnings, wasShownOnCard, type Warning } from "./findings";

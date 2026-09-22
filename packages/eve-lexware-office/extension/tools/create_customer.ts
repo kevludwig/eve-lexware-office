@@ -1,4 +1,4 @@
-import { createCustomer, describeError, findContactsByName } from "@kevinludwig/lexware-office";
+import { createCustomer, describeError, findContactsByName } from "@kevludwig/lexware-office";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 

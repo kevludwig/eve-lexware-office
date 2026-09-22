@@ -4,7 +4,7 @@
  *
  * `create` must be atomic: two callers creating the same key, one wins. That
  * is what keeps a reminder from going out twice. `memoryStore` is for tests
- * and single-process use; `@kevinludwig/lexware-office/vercel-blob` provides
+ * and single-process use; `@kevludwig/lexware-office/vercel-blob` provides
  * one on Vercel Blob.
  */
 

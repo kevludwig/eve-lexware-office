@@ -1,11 +1,11 @@
-# @kevinludwig/lexware-office
+# @kevludwig/lexware-office
 
 A typed client and the domain logic for the [Lexware Office](https://www.lexware.de/lexware-office/) Public API (formerly lexoffice): contacts, vouchers, sales documents, posting categories, overdue receivables, and the rules behind payment reminders.
 
-No framework, no agent, no environment variables — you pass the key, the store, and the mailer. For an agent, see [`@kevinludwig/eve-lexware-office`](../eve-lexware-office).
+No framework, no agent, no environment variables — you pass the key, the store, and the mailer. For an agent, see [`@kevludwig/eve-lexware-office`](../eve-lexware-office).
 
 ```bash
-npm install @kevinludwig/lexware-office
+npm install @kevludwig/lexware-office
 ```
 
 Node 24 or newer, ESM only.
@@ -13,7 +13,7 @@ Node 24 or newer, ESM only.
 ## The client
 
 ```ts
-import { createLexwareClient } from "@kevinludwig/lexware-office";
+import { createLexwareClient } from "@kevludwig/lexware-office";
 
 const client = createLexwareClient({ apiKey: process.env.LEXWARE_API_KEY! });
 ```
@@ -53,7 +53,7 @@ A failed request throws `LexwareApiError` with `status` and `responseBody`; `des
 `selectDueReminders` decides in code, not by judgment, which overdue invoices are due for a reminder:
 
 ```ts
-import { defaultReminderMail, reminderLedger, selectDueReminders, sendReminder, vercelBlobStore } from "@kevinludwig/lexware-office";
+import { defaultReminderMail, reminderLedger, selectDueReminders, sendReminder, vercelBlobStore } from "@kevludwig/lexware-office";
 
 const ledger = reminderLedger(vercelBlobStore({ prefix: "lexware-office" }), "reminders/live");
 const { due, held } = await selectDueReminders(client, ledger);
@@ -84,7 +84,7 @@ An invoice is offered when it is past its reminder due date by `minDaysOverdue`,
 The ledger needs somewhere to keep one small JSON record per invoice. `JsonStore` is four methods — `read`, `write`, `create` (which must fail when the key exists, that is what makes a claim a claim), `delete`:
 
 - `memoryStore()` — tests and scripts.
-- `vercelBlobStore({ prefix })` — Vercel Blob, needs `BLOB_READ_WRITE_TOKEN` (or a `token`). Imported from `@kevinludwig/lexware-office/vercel-blob`, with `@vercel/blob` as an optional peer.
+- `vercelBlobStore({ prefix })` — Vercel Blob, needs `BLOB_READ_WRITE_TOKEN` (or a `token`). Imported from `@kevludwig/lexware-office/vercel-blob`, with `@vercel/blob` as an optional peer.
 - Your own, for Redis, S3, Postgres, a file — whatever makes `create` atomic.
 
 ## Tests

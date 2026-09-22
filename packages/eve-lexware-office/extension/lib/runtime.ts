@@ -11,8 +11,8 @@ import {
   type JsonStore,
   type LexwareClient,
   type ReminderLedger,
-} from "@kevinludwig/lexware-office";
-import { vercelBlobStore } from "@kevinludwig/lexware-office/vercel-blob";
+} from "@kevludwig/lexware-office";
+import { vercelBlobStore } from "@kevludwig/lexware-office/vercel-blob";
 import type { ApprovalResponseContext, ApprovalResponseDecision } from "eve/tools/approval";
 
 import extension from "../extension";

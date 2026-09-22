@@ -7,7 +7,7 @@
  * session state under the call id. The model can neither set nor skip them.
  */
 
-import { round2 } from "@kevinludwig/lexware-office";
+import { round2 } from "@kevludwig/lexware-office";
 import { defineState } from "eve/context";
 
 import { eur, shortDate } from "./format";

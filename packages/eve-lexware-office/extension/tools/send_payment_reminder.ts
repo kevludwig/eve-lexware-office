@@ -9,7 +9,7 @@ import {
   isDueImmediately,
   sendReminder,
   type ReminderRecord,
-} from "@kevinludwig/lexware-office";
+} from "@kevludwig/lexware-office";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 

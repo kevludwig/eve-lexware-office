@@ -1,4 +1,4 @@
-import { DEFAULT_REMINDER_POLICY, daysSince, selectDueReminders, type ReminderHold } from "@kevinludwig/lexware-office";
+import { DEFAULT_REMINDER_POLICY, daysSince, selectDueReminders, type ReminderHold } from "@kevludwig/lexware-office";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 

@@ -4,20 +4,20 @@ Two packages for the [Lexware Office](https://www.lexware.de/lexware-office/) Pu
 
 | Package | What it is |
 |---|---|
-| [`@kevinludwig/lexware-office`](packages/lexware-office) | A typed client and the domain logic: contacts, vouchers, sales documents, posting categories, overdue receivables, payment-reminder rules. No agent, no framework. |
-| [`@kevinludwig/eve-lexware-office`](packages/eve-lexware-office) | An [eve](https://eve.dev) extension built on it: tools, skills, and checks so an agent can read the account, create documents, and send payment reminders — every write behind a human approval. |
+| [`@kevludwig/lexware-office`](packages/lexware-office) | A typed client and the domain logic: contacts, vouchers, sales documents, posting categories, overdue receivables, payment-reminder rules. No agent, no framework. |
+| [`@kevludwig/eve-lexware-office`](packages/eve-lexware-office) | An [eve](https://eve.dev) extension built on it: tools, skills, and checks so an agent can read the account, create documents, and send payment reminders — every write behind a human approval. |
 
 Use the library on its own for scripts and backends. Add the extension when an agent should do the work.
 
 ```bash
-npm install @kevinludwig/lexware-office
-npm install @kevinludwig/eve-lexware-office   # plus the library, for an eve agent
+npm install @kevludwig/lexware-office
+npm install @kevludwig/eve-lexware-office   # plus the library, for an eve agent
 ```
 
 ## The library in a minute
 
 ```ts
-import { createLexwareClient, findOverdueInvoices, selectDueReminders, reminderLedger, memoryStore } from "@kevinludwig/lexware-office";
+import { createLexwareClient, findOverdueInvoices, selectDueReminders, reminderLedger, memoryStore } from "@kevludwig/lexware-office";
 
 const client = createLexwareClient({ apiKey: process.env.LEXWARE_API_KEY! });
 
@@ -31,7 +31,7 @@ One client is one rate-limit queue: requests are spaced, a 429 is retried once. 
 
 ```ts
 // agent/extensions/lexware.ts
-import lexware from "@kevinludwig/eve-lexware-office";
+import lexware from "@kevludwig/eve-lexware-office";
 
 export default lexware({
   apiKey: process.env.LEXWARE_API_KEY!,

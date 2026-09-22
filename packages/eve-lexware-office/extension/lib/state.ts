@@ -3,7 +3,7 @@
  * names cannot collide with the consumer's.
  */
 
-import type { ReminderTarget } from "@kevinludwig/lexware-office";
+import type { ReminderTarget } from "@kevludwig/lexware-office";
 import { defineState } from "eve/context";
 
 /** Contacts a customer card showed as similar, by tool call id. */
