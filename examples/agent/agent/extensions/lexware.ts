@@ -1,5 +1,5 @@
-import lexware from "@kevinludwig/eve-lexware-office";
-import { memoryStore } from "@kevinludwig/lexware-office";
+import lexware from "@kevludwig/eve-lexware-office";
+import { memoryStore } from "@kevludwig/lexware-office";
 
 /**
  * The extension, mounted as `lexware`: tools become `lexware__read`,

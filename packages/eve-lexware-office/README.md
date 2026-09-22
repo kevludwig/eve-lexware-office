@@ -1,11 +1,11 @@
-# @kevinludwig/eve-lexware-office
+# @kevludwig/eve-lexware-office
 
 An [eve](https://eve.dev) extension for [Lexware Office](https://www.lexware.de/lexware-office/) (formerly lexoffice): an agent reads the account, creates customers and documents, captures purchase invoices, and sends payment reminders — every write behind a human approval, with the checks already done.
 
-Built on [`@kevinludwig/lexware-office`](../lexware-office), which holds the API client and the rules.
+Built on [`@kevludwig/lexware-office`](../lexware-office), which holds the API client and the rules.
 
 ```bash
-npm install @kevinludwig/eve-lexware-office @kevinludwig/lexware-office
+npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office
 ```
 
 Node 24 or newer, eve 0.63 or newer.
@@ -14,7 +14,7 @@ Node 24 or newer, eve 0.63 or newer.
 
 ```ts
 // agent/extensions/lexware.ts
-import lexware from "@kevinludwig/eve-lexware-office";
+import lexware from "@kevludwig/eve-lexware-office";
 
 export default lexware({
   apiKey: process.env.LEXWARE_API_KEY!,

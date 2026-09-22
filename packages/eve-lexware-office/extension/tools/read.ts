@@ -1,4 +1,4 @@
-import { describeError, query } from "@kevinludwig/lexware-office";
+import { describeError, query } from "@kevludwig/lexware-office";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 

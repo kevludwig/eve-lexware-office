@@ -10,10 +10,10 @@ importers:
 
   examples/agent:
     dependencies:
-      '@kevinludwig/eve-lexware-office':
+      '@kevludwig/eve-lexware-office':
         specifier: workspace:*
         version: link:../../packages/eve-lexware-office
-      '@kevinludwig/lexware-office':
+      '@kevludwig/lexware-office':
         specifier: workspace:*
         version: link:../../packages/lexware-office
       eve:
@@ -32,7 +32,7 @@ importers:
 
   packages/eve-lexware-office:
     dependencies:
-      '@kevinludwig/lexware-office':
+      '@kevludwig/lexware-office':
         specifier: workspace:*
         version: link:../lexware-office
       '@vercel/blob':

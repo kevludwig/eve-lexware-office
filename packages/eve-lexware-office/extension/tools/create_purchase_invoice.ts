@@ -7,7 +7,7 @@ import {
   round2,
   taxFromGross,
   uploadVoucherFile,
-} from "@kevinludwig/lexware-office";
+} from "@kevludwig/lexware-office";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 

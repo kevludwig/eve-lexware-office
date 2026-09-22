@@ -1,4 +1,4 @@
-import type { JsonStore, LexwareClient, ReminderPolicy, ReminderSender, RenderReminderMail, SendReminderMail } from "@kevinludwig/lexware-office";
+import type { JsonStore, LexwareClient, ReminderPolicy, ReminderSender, RenderReminderMail, SendReminderMail } from "@kevludwig/lexware-office";
 import { defineExtension } from "eve/extension";
 import { z } from "zod";
 

@@ -3,7 +3,7 @@
  * input and the findings its approval stored. Channels only render them.
  */
 
-import { daysSince, netTotal, round2 } from "@kevinludwig/lexware-office";
+import { daysSince, netTotal, round2 } from "@kevludwig/lexware-office";
 
 import { eur, shortDate } from "./format";
 import { purchaseCard } from "./purchase-card";

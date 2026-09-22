@@ -1,5 +1,5 @@
 {
-  "name": "@kevinludwig/lexware-office",
+  "name": "@kevludwig/lexware-office",
   "version": "0.0.0",
   "description": "Typed client and domain logic for the Lexware Office Public API: contacts, receivables, payment reminder rules.",
   "type": "module",

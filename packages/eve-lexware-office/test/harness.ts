@@ -14,7 +14,7 @@
 
 import { mock } from "node:test";
 
-import { createLexwareClient, memoryStore, reminderLedger, type JsonStore, type LexwareClient, type ReminderLedger } from "@kevinludwig/lexware-office";
+import { createLexwareClient, memoryStore, reminderLedger, type JsonStore, type LexwareClient, type ReminderLedger } from "@kevludwig/lexware-office";
 
 export interface Call {
   method: string;

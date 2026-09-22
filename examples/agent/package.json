@@ -7,8 +7,8 @@
     "build": "eve build"
   },
   "dependencies": {
-    "@kevinludwig/eve-lexware-office": "workspace:*",
-    "@kevinludwig/lexware-office": "workspace:*",
+    "@kevludwig/eve-lexware-office": "workspace:*",
+    "@kevludwig/lexware-office": "workspace:*",
     "eve": "0.63.0",
     "zod": "4.5.4"
   },

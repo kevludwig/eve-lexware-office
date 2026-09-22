@@ -1,5 +1,5 @@
 {
-  "name": "@kevinludwig/eve-lexware-office",
+  "name": "@kevludwig/eve-lexware-office",
   "version": "0.0.0",
   "type": "module",
   "eve": {
@@ -29,7 +29,7 @@
     "test": "node --test --experimental-test-module-mocks test/*.test.ts"
   },
   "dependencies": {
-    "@kevinludwig/lexware-office": "workspace:*",
+    "@kevludwig/lexware-office": "workspace:*",
     "@vercel/blob": "^2.8.0",
     "zod": "4.5.4"
   },
