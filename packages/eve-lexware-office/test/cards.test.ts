@@ -61,7 +61,7 @@ describe("approvalCard", () => {
       total_gross_amount: 1578.83,
       tax_groups: [{ gross_amount: 1578.83, tax_rate_percent: 19 }],
       category: "Wareneinkauf",
-      attachment_path: "/workspace/attachments/d17acc216698c171/R-2026-0042.pdf",
+      attachment_path: "/workspace/attachments/0123456789abcdef/R-2026-0042.pdf",
     })!;
 
     assert.equal(card.subtitle, "Musterlieferant GmbH · Rechnung R-2026-0042 · 1.578,83 EUR brutto");
@@ -75,14 +75,14 @@ describe("approvalCard", () => {
   it("shows a foreign invoice with the debited amount, and the invoice amount beside it", () => {
     const card = approvalCard("lexware__create_purchase_invoice", "call", {
       supplier_name: "Cloud Services Ltd.",
-      voucher_number: "E77E2130-0060",
+      voucher_number: "INV-2026-0311",
       currency: "USD",
       bank_statement_eur_amount: 44.12,
       total_gross_amount: 51.75,
       tax_groups: [{ gross_amount: 51.75, tax_rate_percent: 0 }],
     })!;
 
-    assert.equal(card.subtitle, "Cloud Services Ltd. · Rechnung E77E2130-0060 · 44,12 EUR brutto (51,75 USD)");
+    assert.equal(card.subtitle, "Cloud Services Ltd. · Rechnung INV-2026-0311 · 44,12 EUR brutto (51,75 USD)");
     assert.equal(factOf(card, "Brutto"), "44,12 EUR");
     assert.equal(factOf(card, "Rechnungsendbetrag"), "51,75 USD — passt");
     assert.equal(factOf(card, "Original"), "kein Anhang");
