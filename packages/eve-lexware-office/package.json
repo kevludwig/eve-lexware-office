@@ -1,0 +1,70 @@
+{
+  "name": "@kevinludwig/eve-lexware-office",
+  "version": "0.0.0",
+  "type": "module",
+  "eve": {
+    "extension": {
+      "source": "./extension",
+      "dist": "./dist/extension"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "default": "./dist/tools/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "eve extension build",
+    "prepare": "eve extension build",
+    "typecheck": "tsc",
+    "pretest": "eve extension build",
+    "test": "node --test --experimental-test-module-mocks test/*.test.ts"
+  },
+  "dependencies": {
+    "@kevinludwig/lexware-office": "workspace:*",
+    "@vercel/blob": "^2.8.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.x",
+    "eve": "0.63.0",
+    "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "eve": "*"
+  },
+  "description": "eve extension for Lexware Office: read the account, create customers, quotations, order confirmations, invoices and purchase invoices, and send payment reminders — every write behind an approval.",
+  "license": "MIT",
+  "author": "Kevin Ludwig",
+  "keywords": [
+    "eve",
+    "eve-extension",
+    "agent",
+    "lexware",
+    "lexware-office",
+    "lexoffice"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevludwig/eve-lexware-office.git",
+    "directory": "packages/eve-lexware-office"
+  },
+  "homepage": "https://github.com/kevludwig/eve-lexware-office/tree/main/packages/eve-lexware-office#readme",
+  "bugs": {
+    "url": "https://github.com/kevludwig/eve-lexware-office/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
