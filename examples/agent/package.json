@@ -1,0 +1,19 @@
+{
+  "name": "example-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "eve dev",
+    "build": "eve build"
+  },
+  "dependencies": {
+    "@kevinludwig/eve-lexware-office": "workspace:*",
+    "@kevinludwig/lexware-office": "workspace:*",
+    "eve": "0.63.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.x",
+    "typescript": "7.0.2"
+  }
+}

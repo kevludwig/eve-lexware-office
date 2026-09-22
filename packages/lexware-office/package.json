@@ -1,0 +1,64 @@
+{
+  "name": "@kevinludwig/lexware-office",
+  "version": "0.0.0",
+  "description": "Typed client and domain logic for the Lexware Office Public API: contacts, receivables, payment reminder rules.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Kevin Ludwig",
+  "keywords": [
+    "lexware",
+    "lexware-office",
+    "lexoffice",
+    "accounting",
+    "invoices",
+    "api-client"
+  ],
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./vercel-blob": {
+      "types": "./dist/vercel-blob.d.ts",
+      "default": "./dist/vercel-blob.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts"
+  },
+  "peerDependencies": {
+    "@vercel/blob": ">=2"
+  },
+  "peerDependenciesMeta": {
+    "@vercel/blob": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "24.x",
+    "@vercel/blob": "^2.8.0",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevludwig/eve-lexware-office.git",
+    "directory": "packages/lexware-office"
+  },
+  "homepage": "https://github.com/kevludwig/eve-lexware-office/tree/main/packages/lexware-office#readme",
+  "bugs": {
+    "url": "https://github.com/kevludwig/eve-lexware-office/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
