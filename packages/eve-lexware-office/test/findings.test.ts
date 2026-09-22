@@ -22,15 +22,15 @@ describe("describeWarning", () => {
     const finding = describeWarning({
       kind: "sales-duplicate",
       documentLabel: "Auftragsbestätigung",
-      url: "https://app.lexware.de/vouchers#!/VoucherDetail/e7d3abdc",
-      voucherNumber: "AB2026080017",
+      url: "https://app.lexware.de/vouchers#!/VoucherDetail/aaaa1111",
+      voucherNumber: "AB20260007",
       voucherDate: "2026-08-21",
       voucherStatus: "open",
     });
 
     assert.equal(finding.title, "⚠ Dublette");
-    assert.match(finding.value, /AB2026080017, 21\.8\.2026, open/);
-    assert.match(finding.value, /e7d3abdc$/);
+    assert.match(finding.value, /AB20260007, 21.8.2026, open/);
+    assert.match(finding.value, /aaaa1111$/);
   });
 
   it("states the difference of a totals mismatch in the invoice currency", () => {
