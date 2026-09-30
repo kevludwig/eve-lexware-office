@@ -1,0 +1,52 @@
+name: Release
+
+# A pushed tag v* publishes every package whose version is not on npm yet —
+# so a tag can release one package or both. npm trusts this workflow through
+# OIDC (trusted publishing): no token in the repository, provenance included.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@latest
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      # pnpm pack replaces workspace:* with the real version; npm publish then
+      # uploads the tarball through OIDC. The library goes first, since the
+      # extension depends on it.
+      - name: Publish new versions
+        run: |
+          for dir in packages/lexware-office packages/eve-lexware-office; do
+            name=$(node -p "require('./$dir/package.json').name")
+            version=$(node -p "require('./$dir/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already on npm"
+              continue
+            fi
+            tarball=$(cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP" | tail -n 1)
+            npm publish "$tarball" --access public
+          done
