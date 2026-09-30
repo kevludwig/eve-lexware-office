@@ -254,7 +254,12 @@ function reverseChargeFindings(
   ];
 }
 
-/** Per-group categories when a group names one, otherwise the single pick. */
+/**
+ * Per-group categories when a group names one, otherwise the single pick.
+ * Group categories face the same deviation check against the vendor's usual
+ * ones as the single pick — otherwise a category moved into a group would
+ * skip it.
+ */
 export async function resolveCategories(
   input: PurchaseInput,
   contactId: string | undefined,
@@ -262,6 +267,15 @@ export async function resolveCategories(
 ): Promise<{ category: PostingCategory | null; groupCategories: Array<PostingCategory | null> | null; warnings: Warning[] }> {
   const groups = input.tax_groups ?? [];
   if (!groups.some((group) => group.category?.trim())) return { ...(await pickCategory(input, contactId, signal)), groupCategories: null };
+
+  // Without a history there is nothing to deviate from; the group categories
+  // are still taken as named.
+  let usual: Array<{ id: string; name: string }> = [];
+  if (contactId) {
+    try {
+      usual = (await findVendorCategoryHistory(client(), contactId, { signal })).categories;
+    } catch {}
+  }
 
   const warnings: Warning[] = [];
   const resolved: Array<PostingCategory | null> = [];
@@ -283,6 +297,13 @@ export async function resolveCategories(
     } catch (error) {
       warnings.push({ kind: "voucher-category-missing", reason: `Kategorien nicht abrufbar (${describeError(error)}) — Gruppe ${index + 1} wird ohne Kategorie erfasst` });
       resolved.push(null);
+    }
+  }
+
+  if (usual.length > 0) {
+    const deviating = new Set(resolved.flatMap((match) => (match && !usual.some((category) => category.id === match.id) ? [match.name] : [])));
+    for (const name of deviating) {
+      warnings.push({ kind: "category-deviation", chosen: name, usual: usual.map((category) => category.name).join(", ") });
     }
   }
   return { category: null, groupCategories: resolved, warnings };

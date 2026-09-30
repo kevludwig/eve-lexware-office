@@ -150,6 +150,44 @@ describe("runPurchasePreflight", () => {
     assert.ok(result.warnings.some((warning) => warning.kind === "category-ambiguous" || warning.kind === "category-split"));
   });
 
+  it("questions a category off the vendor's usual one", async () => {
+    useApi(vendor("Musterlieferant GmbH"), ...vendorHistory({ id: "v-1", categories: [WARENEINKAUF.id] }));
+    const result = await runPurchasePreflight({ ...input, category: LIZENZEN.name });
+
+    const deviation = result.warnings.find((warning) => warning.kind === "category-deviation");
+    assert.ok(deviation);
+    assert.equal(deviation.chosen, LIZENZEN.name);
+  });
+
+  it("questions it as well when the category sits on a tax group", async () => {
+    useApi(vendor("Musterlieferant GmbH"), ...vendorHistory({ id: "v-1", categories: [WARENEINKAUF.id] }));
+    const result = await runPurchasePreflight({
+      ...input,
+      tax_groups: [{ gross_amount: 1578.83, tax_rate_percent: 19, category: LIZENZEN.name }],
+    });
+
+    const deviations = result.warnings.filter((warning) => warning.kind === "category-deviation");
+    assert.equal(deviations.length, 1);
+    assert.equal(deviations[0].chosen, LIZENZEN.name);
+    assert.equal(deviations[0].usual, "Wareneinkauf");
+  });
+
+  it("takes group categories the vendor already uses without a finding", async () => {
+    useApi(
+      vendor("Musterlieferant GmbH"),
+      ...vendorHistory({ id: "v-1", categories: [WARENEINKAUF.id, LIZENZEN.id] }),
+    );
+    const result = await runPurchasePreflight({
+      ...input,
+      tax_groups: [
+        { gross_amount: 1000, tax_rate_percent: 19, category: WARENEINKAUF.name },
+        { gross_amount: 578.83, tax_rate_percent: 19, category: LIZENZEN.name },
+      ],
+    });
+
+    assert.equal(result.warnings.filter((warning) => warning.kind === "category-deviation").length, 0);
+  });
+
   it("flags tax groups that miss the invoice total", async () => {
     useApi(vendor("Musterlieferant GmbH"), ...vendorHistory({ id: "v-1", categories: [WARENEINKAUF.id] }));
     const result = await runPurchasePreflight({ ...input, tax_groups: [{ gross_amount: 1400, tax_rate_percent: 19 }] });
