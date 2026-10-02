@@ -1,6 +1,6 @@
 {
   "name": "@kevludwig/eve-lexware-office",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "eve": {
     "extension": {
