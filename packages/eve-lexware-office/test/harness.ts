@@ -53,6 +53,12 @@ export function fakeApi(...routes: Route[]): { client: LexwareClient; calls: Cal
 }
 
 let current: { client: LexwareClient; calls: Call[] } | null = null;
+let extraConfig: Record<string, unknown> = {};
+
+/** Mount options for the rest of the test, e.g. an onApprovalCard spy. */
+export function useConfig(config: Record<string, unknown>): void {
+  extraConfig = config;
+}
 let currentStore: JsonStore = memoryStore();
 
 /** Points the extension at these routes for the rest of the test. */
@@ -75,8 +81,9 @@ mock.module(new URL("../dist/extension/lib/runtime.mjs", import.meta.url).href, 
     },
     store: () => currentStore,
     ledger: () => reminderLedger(currentStore, "reminders/test"),
-    config: () => ({ storage: {}, reminders: { mode: "test" } }),
+    config: () => ({ storage: {}, reminders: { mode: "test" }, ...extraConfig }),
     key: (...segments: string[]) => segments.join("/"),
+    approverPolicy: async () => ({ status: "allowed" }),
   },
 });
 

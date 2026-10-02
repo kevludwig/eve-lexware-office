@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { readJournal, writeJournal } from "../lib/journal";
 import { approverPolicy, client } from "../lib/runtime";
+import { withCard } from "../lib/with-card";
 import { saveWarnings, type Warning } from "../lib/findings";
 import { rememberShownContacts, shownContactsOf } from "../lib/state";
 
@@ -35,12 +36,13 @@ export default defineTool({
   description:
     "Legt einen neuen Kunden in Lexware Office an. Pflicht sind Name (Firma oder Person) UND die Rechnungsadresse " +
     "(Straße, PLZ, Ort) — fehlt die Adresse, frage sie zuerst beim Nutzer ab. E-Mail und Telefon sind optional. " +
-    "Prüfe vorher mit dem Lese-Tool (/contacts?name=…), ob der Kunde schon existiert. Legt erst nach Freigabe an.",
+    "Prüfe vorher mit dem Lese-Tool (/contacts?name=…), ob der Kunde schon existiert — Lexware sucht erst ab 3 Zeichen; " +
+    "kürzere Namen (z. B. „KL“) sind als Kundenname erlaubt, dann ohne Vorabsuche direkt dieses Tool aufrufen. Legt erst nach Freigabe an.",
   inputSchema,
 
   approval: {
     /** The finding that matters: a second „Müller GmbH" next to the first. */
-    request: async (ctx) => {
+    request: withCard(async (ctx) => {
       const name = nameOf((ctx.toolInput ?? {}) as Partial<Input>);
       if (!name) return "user-approval" as const;
       const findings: Warning[] = [];
@@ -60,7 +62,7 @@ export default defineTool({
       }
       saveWarnings(ctx.callId, findings);
       return "user-approval" as const;
-    },
+    }),
     response: approverPolicy,
   },
 

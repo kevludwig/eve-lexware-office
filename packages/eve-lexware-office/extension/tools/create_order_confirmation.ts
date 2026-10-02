@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { approverPolicy } from "../lib/runtime";
+import { withCard } from "../lib/with-card";
 import { MAX_LINE_ITEMS, customerFields, executeSalesDocument, lineItemSchema, salesApproval, titleSchema, type SalesInput } from "../lib/sales";
 
 const inputSchema = z
@@ -34,7 +35,7 @@ export default defineTool({
     "Entwurf). Geht die AB aus einem Angebot hervor, dessen quotation_id mitgeben — das Angebot vorher über /voucherlist " +
     "(voucherType 'quotation') suchen und lesen; bei mehreren passenden den Nutzer wählen lassen. Legt erst nach Freigabe an.",
   inputSchema,
-  approval: { request: salesApproval("order-confirmation", withSource), response: approverPolicy },
+  approval: { request: withCard(salesApproval("order-confirmation", withSource)), response: approverPolicy },
   async execute(input, ctx) {
     return executeSalesDocument("order-confirmation", withSource(input), ctx);
   },
