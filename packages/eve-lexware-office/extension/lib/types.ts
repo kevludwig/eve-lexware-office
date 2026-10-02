@@ -1,7 +1,7 @@
 import type { ApprovalResponseContext } from "eve/tools/approval";
 
-/** Whoever answers an approval, as the channel authenticated them. */
-export type Responder = ApprovalResponseContext["responder"];
+/** Whoever answers an approval (approve or cancel), as the channel authenticated them. */
+export type Responder = ApprovalResponseContext["response"]["principal"];
 
 /** One line of findings on a card: "⚠ " in front of the title marks a warning. */
 export interface Finding {

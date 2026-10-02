@@ -53,9 +53,13 @@ export function renderReminder() {
   return defaultReminderMail(reminders.sender ?? { name: "Ihr Team" });
 }
 
-/** The response policy of every writing tool: the mount's canApprove, if any. */
-export async function approverPolicy<T>({ responder }: ApprovalResponseContext<T>): Promise<ApprovalResponseDecision> {
+/**
+ * The response policy of every writing tool: the mount's canApprove, if any.
+ * eve asks it for Cancel as well as Approve — only someone allowed to approve
+ * may withdraw a request someone else is waiting on.
+ */
+export async function approverPolicy<T>({ response }: ApprovalResponseContext<T>): Promise<ApprovalResponseDecision> {
   const canApprove = config().canApprove;
-  if (!canApprove || (await canApprove(responder))) return { status: "allowed" };
+  if (!canApprove || (await canApprove(response.principal))) return { status: "allowed" };
   return { status: "rejected", reason: "Nur berechtigte Personen dürfen freigeben." };
 }
