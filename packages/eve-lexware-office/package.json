@@ -35,11 +35,11 @@
   },
   "devDependencies": {
     "@types/node": "24.x",
-    "eve": "0.63.0",
+    "eve": "0.70.0",
     "typescript": "7.0.2"
   },
   "peerDependencies": {
-    "eve": "*"
+    "eve": ">=0.70.0"
   },
   "description": "eve extension for Lexware Office: read the account, create customers, quotations, order confirmations, invoices and purchase invoices, and send payment reminders — every write behind an approval.",
   "license": "MIT",

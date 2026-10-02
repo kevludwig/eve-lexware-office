@@ -8,7 +8,7 @@ Built on [`@kevludwig/lexware-office`](../lexware-office), which holds the API c
 npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office
 ```
 
-Node 24 or newer, eve 0.63 or newer.
+Node 24 or newer, eve 0.70 or newer.
 
 ## Mount it
 
@@ -68,7 +68,7 @@ Between card and click, hours can pass, so every writing tool checks again immed
 | `baseUrl`, `appUrl` | the API and app URLs | Only for another environment. |
 | `storage.store` | Vercel Blob | Where journal, reminder records, and send claims live. Any `JsonStore`. |
 | `storage.prefix` | `lexware-office` | Key prefix inside the store. |
-| `canApprove` | anyone in the session | `(responder) => boolean` — who may approve a write. |
+| `canApprove` | anyone in the session | `(responder) => boolean` — who may approve a write or cancel it. |
 | `onApprovalCard` | — | `(callId, card)` with the finished card: title, subtitle, facts, note, findings. For your own UI. |
 | `conversationUrl` | — | `(sessionId) => string`, for "waits in another conversation". |
 | `attachments` | — | A second source for an upload the sandbox lost: `{ read, size?, release? }`. |
