@@ -60,12 +60,20 @@ export async function findContactByNumber(
   return raw ? toContact(raw) : null;
 }
 
-/** Contacts whose name matches — fuzzy, up to `size` (default 10). */
+/** Lexware searches names from three characters on; shorter ones it refuses with a 400. */
+export const MIN_NAME_SEARCH_LENGTH = 3;
+
+/**
+ * Contacts whose name matches — fuzzy, up to `size` (default 10). A name
+ * shorter than MIN_NAME_SEARCH_LENGTH finds nothing (no request): callers
+ * that must not mistake that for "no match" check the length themselves.
+ */
 export async function findContactsByName(
   client: LexwareClient,
   name: string,
   options: { customer?: boolean; vendor?: boolean; size?: number; signal?: AbortSignal } = {},
 ): Promise<Contact[]> {
+  if (name.trim().length < MIN_NAME_SEARCH_LENGTH) return [];
   const page = await client.request<ContactPage>(
     `/contacts${query({ name, customer: options.customer, vendor: options.vendor, size: options.size ?? 10 })}`,
     { signal: options.signal },

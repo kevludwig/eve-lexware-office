@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { LexwareApiError, createLexwareClient, describeError, query, voucherFileIds } from "../src/index.ts";
+import { LexwareApiError, createLexwareClient, describeError, findContactsByName, query, voucherFileIds } from "../src/index.ts";
 
 type Call = { url: string; init: RequestInit; at: number };
 
@@ -109,5 +109,16 @@ describe("file uploads", () => {
     assert.deepEqual(await voucherFileIds(client, "v1"), ["f1"]);
     assert.deepEqual(await voucherFileIds(client, "v2"), []);
     assert.match(calls[0]!.url, /\/vouchers\/v1$/);
+  });
+});
+
+describe("contact search", () => {
+  it("does not ask Lexware for names under three characters (it answers 400)", async () => {
+    const { impl, calls } = fakeFetch([() => json({ content: [{ id: "c1", company: { name: "KLM GmbH" }, roles: { customer: {} } }] })]);
+    const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0 });
+    assert.deepEqual(await findContactsByName(client, " KL "), []);
+    assert.equal(calls.length, 0);
+    assert.equal((await findContactsByName(client, "KLM")).length, 1);
+    assert.equal(calls.length, 1);
   });
 });
