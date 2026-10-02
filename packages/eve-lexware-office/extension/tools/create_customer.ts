@@ -1,4 +1,4 @@
-import { createCustomer, describeError, findContactsByName } from "@kevludwig/lexware-office";
+import { createCustomer, describeError, findContactsByName, MIN_NAME_SEARCH_LENGTH } from "@kevludwig/lexware-office";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
@@ -44,6 +44,12 @@ export default defineTool({
       const name = nameOf((ctx.toolInput ?? {}) as Partial<Input>);
       if (!name) return "user-approval" as const;
       const findings: Warning[] = [];
+      // Lexware does not search names this short — say so instead of "no similar contacts".
+      if (name.trim().length < MIN_NAME_SEARCH_LENGTH) {
+        findings.push({ kind: "note", title: "⚠ Name zu kurz für die Suche", value: `Ähnliche Kontakte ungeprüft (Lexware sucht ab ${MIN_NAME_SEARCH_LENGTH} Zeichen).` });
+        saveWarnings(ctx.callId, findings);
+        return "user-approval" as const;
+      }
       try {
         const similar = await findContactsByName(client(), name, { size: 5, signal: ctx.abortSignal });
         if (similar.length > 0) findings.push({ kind: "note", title: "⚠ Ähnliche Kontakte", value: similar.map(label).join(", ") });

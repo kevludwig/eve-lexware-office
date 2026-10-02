@@ -14,6 +14,7 @@ export {
   createCustomer,
   findContactByNumber,
   findContactsByName,
+  MIN_NAME_SEARCH_LENGTH,
   getContact,
   resolveContactByName,
   type Contact,
