@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { approverPolicy } from "../lib/runtime";
+import { withCard } from "../lib/with-card";
 import { MAX_LINE_ITEMS, customerFields, executeSalesDocument, lineItemSchema, salesApproval } from "../lib/sales";
 
 const inputSchema = z
@@ -25,7 +26,7 @@ export default defineTool({
     "Kunde per Kundennummer oder contact_id, dazu die Positionen; source_document_id, wenn die Rechnung aus einem Angebot " +
     "oder einer AB hervorgeht. Legt erst nach Freigabe an und prüft vorher auf Dubletten.",
   inputSchema,
-  approval: { request: salesApproval("invoice"), response: approverPolicy },
+  approval: { request: withCard(salesApproval("invoice")), response: approverPolicy },
   async execute(input, ctx) {
     return executeSalesDocument("invoice", input, ctx);
   },

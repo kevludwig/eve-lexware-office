@@ -29,6 +29,7 @@ import {
   totalsOf,
 } from "../lib/purchase";
 import { approverPolicy, client, config } from "../lib/runtime";
+import { withCard } from "../lib/with-card";
 
 /**
  * Status and tax type are fixed: `unchecked` files the voucher under "Belege
@@ -155,7 +156,7 @@ export default defineTool({
      * choose) goes back once so the model fixes the call; the same call again
      * goes to the card, where the user decides.
      */
-    request: async (ctx) => {
+    request: withCard(async (ctx) => {
       const input = ctx.toolInput as Partial<Input> | undefined;
       if (!input?.voucher_number) return "user-approval";
       // Without the debited amount there is nothing to approve — denied until it is there.
@@ -215,7 +216,7 @@ export default defineTool({
         }
       }
       return "user-approval";
-    },
+    }),
     response: approverPolicy,
   },
 

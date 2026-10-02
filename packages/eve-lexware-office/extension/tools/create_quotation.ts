@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { approverPolicy } from "../lib/runtime";
+import { withCard } from "../lib/with-card";
 import { MAX_LINE_ITEMS, QUOTATION_VALIDITY_DAYS, customerFields, executeSalesDocument, isCalendarDate, lineItemSchema, salesApproval, titleSchema } from "../lib/sales";
 
 const inputSchema = z
@@ -28,7 +29,7 @@ export default defineTool({
     "an und prüft vorher, ob es für diesen Kunden schon ein Angebot mit gleicher Positionssumme gibt. Versendet wird aus " +
     "Lexware Office.",
   inputSchema,
-  approval: { request: salesApproval("quotation"), response: approverPolicy },
+  approval: { request: withCard(salesApproval("quotation")), response: approverPolicy },
   async execute(input, ctx) {
     return executeSalesDocument("quotation", input, ctx);
   },

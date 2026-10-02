@@ -16,6 +16,7 @@ import { z } from "zod";
 import { shortDate } from "../lib/format";
 import { readJournal, writeJournal } from "../lib/journal";
 import { approverPolicy, client, config, ledger, renderReminder } from "../lib/runtime";
+import { withCard } from "../lib/with-card";
 import { saveWarnings, type Warning } from "../lib/findings";
 import { bindReminderTarget, boundReminderTarget } from "../lib/state";
 
@@ -53,7 +54,7 @@ export default defineTool({
      * Lexware Office: a mismatch is denied with the real values. Recipient,
      * lateness, and an earlier reminder become findings.
      */
-    request: async (ctx) => {
+    request: withCard(async (ctx) => {
       const input = ctx.toolInput as Partial<Input> | undefined;
       if (!input?.invoice_id) return "user-approval";
       const reminders = config().reminders;
@@ -143,7 +144,7 @@ export default defineTool({
       });
       if (earlier?.status !== "sent") await ledger().markPending(invoice, ctx.session.id).catch(() => {});
       return "user-approval";
-    },
+    }),
     response: approverPolicy,
   },
 
