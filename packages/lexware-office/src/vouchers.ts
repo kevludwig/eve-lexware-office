@@ -106,6 +106,16 @@ export async function uploadVoucherFile(client: LexwareClient, voucherId: string
   return client.upload<{ id: string }>(`/vouchers/${encodeURIComponent(voucherId)}/files`, file, { signal });
 }
 
+/**
+ * The ids of the files attached to a voucher. After an upload that ended in
+ * a timeout or a dropped connection this tells whether the file arrived
+ * anyway — Lexware often finishes after the client has given up.
+ */
+export async function voucherFileIds(client: LexwareClient, voucherId: string, signal?: AbortSignal): Promise<string[]> {
+  const voucher = await client.request<{ files?: string[] }>(`/vouchers/${encodeURIComponent(voucherId)}`, { signal });
+  return voucher.files ?? [];
+}
+
 export interface VoucherListEntry {
   id: string;
   voucherType: string;

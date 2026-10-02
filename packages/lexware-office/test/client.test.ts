@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { LexwareApiError, createLexwareClient, describeError, query } from "../src/index.ts";
+import { LexwareApiError, createLexwareClient, describeError, query, voucherFileIds } from "../src/index.ts";
 
 type Call = { url: string; init: RequestInit; at: number };
 
@@ -80,5 +80,34 @@ describe("query", () => {
   it("drops empty values", () => {
     assert.equal(query({ a: 1, b: "", c: undefined, d: true }), "?a=1&d=true");
     assert.equal(query({}), "");
+  });
+});
+
+describe("file uploads", () => {
+  const slow = (ms: number, body: unknown) =>
+    (async (_url: string | URL | Request, init: RequestInit = {}) => {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, ms);
+        init.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(init.signal?.reason);
+        });
+      });
+      return json(body);
+    }) as typeof fetch;
+  const file = { bytes: new Uint8Array([37, 80, 68, 70]), filename: "R.pdf", mediaType: "application/pdf" };
+
+  it("give an upload longer than a JSON call", async () => {
+    const client = createLexwareClient({ apiKey: "k", fetch: slow(60, { id: "f1" }), minSpacingMs: 0, timeoutMs: 20, uploadTimeoutMs: 500 });
+    assert.deepEqual(await client.upload("/vouchers/v1/files", file), { id: "f1" });
+    await assert.rejects(client.request("/vouchers/v1"));
+  });
+
+  it("tell from the voucher whether a file arrived", async () => {
+    const { impl, calls } = fakeFetch([() => json({ id: "v1", files: ["f1"] }), () => json({ id: "v2" })]);
+    const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0 });
+    assert.deepEqual(await voucherFileIds(client, "v1"), ["f1"]);
+    assert.deepEqual(await voucherFileIds(client, "v2"), []);
+    assert.match(calls[0]!.url, /\/vouchers\/v1$/);
   });
 });

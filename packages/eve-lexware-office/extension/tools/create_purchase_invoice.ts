@@ -7,6 +7,7 @@ import {
   round2,
   taxFromGross,
   uploadVoucherFile,
+  voucherFileIds,
 } from "@kevludwig/lexware-office";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
@@ -320,7 +321,19 @@ export default defineTool({
         attachmentResult = `${attachment.filename} angehängt`;
         if (input.attachment_path) await fallback?.release?.(input.attachment_path).catch(() => {});
       } catch (error) {
-        attachmentResult = `${attachment.filename} konnte nicht angehängt werden: ${describeError(error)}`;
+        // A timeout or a dropped connection does not mean the file is missing:
+        // Lexware often finishes the upload after the client has given up.
+        const arrived = await voucherFileIds(client(), voucher.id, ctx.abortSignal).then(
+          (ids) => ids.length > 0,
+          () => false,
+        );
+        if (arrived) {
+          await writeJournal("purchase", ctx.callId, { status: "attached", resourceId: voucher.id });
+          attachmentResult = `${attachment.filename} angehängt`;
+          if (input.attachment_path) await fallback?.release?.(input.attachment_path).catch(() => {});
+        } else {
+          attachmentResult = `${attachment.filename} konnte nicht angehängt werden: ${describeError(error)}`;
+        }
       }
     }
 

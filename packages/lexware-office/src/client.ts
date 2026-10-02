@@ -24,6 +24,12 @@ export interface LexwareClientOptions {
   minSpacingMs?: number;
   /** Time limit per request in ms, counted from when it actually fires. Default: 20 000. */
   timeoutMs?: number;
+  /**
+   * Time limit for file uploads in ms. A scan of a few MB can take Lexware
+   * longer than a JSON call to accept — an early abort reports a failure for
+   * a file that arrives anyway. Default: 120 000.
+   */
+  uploadTimeoutMs?: number;
   /** Wait before retrying a request answered with 429, in ms. Default: 1 000. */
   rateLimitBackoffMs?: number;
   /** A fetch implementation, e.g. for tests. Default: the global fetch. */
@@ -104,6 +110,7 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
   const appUrl = (options.appUrl ?? DEFAULT_APP_URL).replace(/\/+$/, "");
   const minSpacingMs = options.minSpacingMs ?? 550;
   const timeoutMs = options.timeoutMs ?? 20_000;
+  const uploadTimeoutMs = options.uploadTimeoutMs ?? 120_000;
   const backoffMs = options.rateLimitBackoffMs ?? 1_000;
   const fetchImpl = options.fetch ?? fetch;
 
@@ -132,11 +139,11 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
    * demonstrably did not run it. A transport error after a POST is never
    * retried: the voucher may well exist already.
    */
-  async function send(path: string, init: RequestInit): Promise<Response> {
+  async function send(path: string, init: RequestInit, limitMs = timeoutMs): Promise<Response> {
     const method = init.method ?? "GET";
     const fire = () =>
       schedule(() => {
-        const timeout = AbortSignal.timeout(timeoutMs);
+        const timeout = AbortSignal.timeout(limitMs);
         return fetchImpl(`${baseUrl}${path}`, {
           ...init,
           headers: { Authorization: `Bearer ${options.apiKey}`, Accept: "application/json", ...init.headers },
@@ -188,7 +195,7 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
       // An own ArrayBuffer: Blob refuses shared buffers.
       form.set("file", new Blob([Uint8Array.from(file.bytes)], { type: file.mediaType }), file.filename);
       // No Content-Type: fetch sets the multipart boundary.
-      return json<T>(await send(path, { ...init, method: "POST", body: form }));
+      return json<T>(await send(path, { ...init, method: "POST", body: form }, uploadTimeoutMs));
     },
 
     voucherUrl(id: string) {

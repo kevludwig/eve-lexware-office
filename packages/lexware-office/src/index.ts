@@ -80,6 +80,7 @@ export {
   findVendorCategoryHistory,
   findVouchers,
   uploadVoucherFile,
+  voucherFileIds,
   type CategoryHistory,
   type CreateVoucherOptions,
   type CreatedVoucher,
