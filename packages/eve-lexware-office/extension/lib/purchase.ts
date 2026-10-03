@@ -98,11 +98,12 @@ export function totalsOf(groups: readonly TaxGroupInput[] = []): { gross: number
 }
 
 /**
- * Where eve stages uploaded files: /workspace/attachments/<hash>/<name>. The
- * path comes from the model, so this is an allowlist — any other sandbox file
- * must never end up attached to a voucher.
+ * Where eve stages uploaded files: /workspace/.eve/attachments/<hash>/<name>
+ * since eve 0.70.2, /workspace/attachments/… before. The path comes from the
+ * model, so this is an allowlist — any other sandbox file must never end up
+ * attached to a voucher.
  */
-const ATTACHMENT_PATH = /^\/workspace\/attachments\/[0-9a-f]{8,64}\/[\w.-]+$/;
+const ATTACHMENT_PATH = /^\/workspace\/(?:\.eve\/)?attachments\/[0-9a-f]{8,64}\/[\w.-]+$/;
 
 export const isAllowedAttachmentPath = (path: string) => ATTACHMENT_PATH.test(path);
 
@@ -410,7 +411,7 @@ async function checkAttachment(input: PurchaseInput, readFileSize?: (path: strin
   const path = input.attachment_path?.trim();
   if (!path) return [];
   if (!isAllowedAttachmentPath(path)) {
-    return [{ kind: "voucher-attachment-missing", reason: `„${path}" liegt nicht unter /workspace/attachments/ — es wird kein Original angehängt` }];
+    return [{ kind: "voucher-attachment-missing", reason: `„${path}" ist kein Anhang-Pfad von eve — es wird kein Original angehängt` }];
   }
   if (!readFileSize) return [];
   try {

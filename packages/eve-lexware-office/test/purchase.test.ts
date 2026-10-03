@@ -73,6 +73,9 @@ describe("amounts", () => {
 
   it("allows only eve's staging paths as an attachment", () => {
     assert.equal(isAllowedAttachmentPath("/workspace/attachments/0123456789abcdef/R-2026-0042.pdf"), true);
+    assert.equal(isAllowedAttachmentPath("/workspace/.eve/attachments/0123456789abcdef/R-2026-0042.pdf"), true);
+    assert.equal(isAllowedAttachmentPath("/workspace/.eve/../attachments/0123456789abcdef/R-2026-0042.pdf"), false);
+    assert.equal(isAllowedAttachmentPath("/workspace/.eve/other/0123456789abcdef/R-2026-0042.pdf"), false);
     assert.equal(isAllowedAttachmentPath("/workspace/secrets.pdf"), false);
     assert.equal(isAllowedAttachmentPath("/workspace/attachments/../../etc/passwd"), false);
     assert.equal(isAllowedAttachmentPath("/etc/passwd"), false);

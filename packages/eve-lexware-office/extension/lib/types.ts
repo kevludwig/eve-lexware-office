@@ -24,7 +24,7 @@ export interface ApprovalCard {
   findings: Finding[];
 }
 
-/** A second source for attachments eve staged under /workspace/attachments/. */
+/** A second source for attachments eve staged under /workspace/.eve/attachments/ (before eve 0.70.2: /workspace/attachments/). */
 export interface AttachmentFallback {
   /** The bytes of a staged attachment, or null if unknown. */
   read(path: string, signal?: AbortSignal): Promise<Uint8Array | null>;
