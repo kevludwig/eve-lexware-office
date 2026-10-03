@@ -105,7 +105,7 @@ const inputSchema = z
       .trim()
       .max(500)
       .optional()
-      .describe("Sandbox-Pfad des Originals, wie beim hochgeladenen Dokument angegeben (/workspace/attachments/…). Wird als Anhang hochgeladen."),
+      .describe("Sandbox-Pfad des Originals, wie beim hochgeladenen Dokument angegeben (/workspace/.eve/attachments/…). Wird als Anhang hochgeladen."),
   })
   .strict()
   .refine(
@@ -234,7 +234,7 @@ export default defineTool({
     let attachmentProblem: string | null = null;
     if (input.attachment_path) {
       if (!isAllowedAttachmentPath(input.attachment_path)) {
-        attachmentProblem = `„${input.attachment_path}" liegt nicht unter /workspace/attachments/`;
+        attachmentProblem = `„${input.attachment_path}" ist kein Anhang-Pfad von eve`;
       } else {
         let bytes: Uint8Array | null = null;
         try {

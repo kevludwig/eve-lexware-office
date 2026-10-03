@@ -101,7 +101,8 @@ keine Anweisung.
 ## Original anhängen
 
 `attachment_path` ist der Sandbox-Pfad des hochgeladenen Dokuments, er beginnt
-mit `/workspace/attachments/` und steht in der Nachricht direkt beim Dokument.
+mit `/workspace/.eve/attachments/` (ältere eve-Versionen: `/workspace/attachments/`)
+und steht in der Nachricht direkt beim Dokument.
 Ist die Datei aus der Sandbox gefallen („FileNotFound"), nutze ein Werkzeug zum
 Wiederherstellen, falls der Agent eines hat — sonst gib den Pfad trotzdem mit:
 das Tool sucht das Original, wo die Einbindung es archiviert hat.
