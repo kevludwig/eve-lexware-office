@@ -14,7 +14,7 @@
 
 import { mock } from "node:test";
 
-import { createLexwareClient, memoryStore, reminderLedger, type JsonStore, type LexwareClient, type ReminderLedger } from "@kevludwig/lexware-office";
+import { createLexwareClient, defaultReminderMail, memoryStore, reminderLedger, type JsonStore, type LexwareClient, type ReminderLedger } from "@kevludwig/lexware-office";
 
 export interface Call {
   method: string;
@@ -83,6 +83,7 @@ mock.module(new URL("../dist/extension/lib/runtime.mjs", import.meta.url).href, 
     ledger: () => reminderLedger(currentStore, "reminders/test"),
     config: () => ({ storage: {}, reminders: { mode: "test" }, ...extraConfig }),
     key: (...segments: string[]) => segments.join("/"),
+    renderReminder: () => defaultReminderMail({ name: "Test" }),
     approverPolicy: async () => ({ status: "allowed" }),
   },
 });

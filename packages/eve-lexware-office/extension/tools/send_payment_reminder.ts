@@ -7,6 +7,7 @@ import {
   earliestReminderDate,
   findOverdueInvoice,
   isDueImmediately,
+  paymentReminderEffect,
   sendReminder,
   type ReminderRecord,
 } from "@kevludwig/lexware-office";
@@ -159,14 +160,27 @@ export default defineTool({
     // A replay that finds this call started does not send again.
     const journal = await readJournal("reminder", ctx.callId);
     if (journal) {
-      if (journal.status === "created") {
-        await ledger()
-          .write({ invoiceId: target.invoiceId, voucherNumber: target.voucherNumber, status: "sent", recipient: target.to, sessionId: ctx.session.id })
-          .catch(() => {});
+      if (journal.status !== "created") {
+        return { sent: false, note: "Wiederaufnahme nach Abbruch: Ob die Erinnerung rausging, ist unklar. Im Postausgang nachsehen." };
       }
-      return journal.status === "created"
-        ? { sent: true, note: "Wiederaufnahme: Die Erinnerung war bereits verschickt." }
-        : { sent: false, note: "Wiederaufnahme nach Abbruch: Ob die Erinnerung rausging, ist unklar. Im Postausgang nachsehen." };
+      await ledger()
+        .write({ invoiceId: target.invoiceId, voucherNumber: target.voucherNumber, status: "sent", recipient: target.to, sessionId: ctx.session.id })
+        .catch(() => {});
+      // The effect as recorded when the mail went out; an entry from before
+      // it was recorded gives what the approval fixed, and null for the rest.
+      const effect = journal.effect ?? paymentReminderEffect(target, null);
+      return {
+        sent: true,
+        to: effect.to,
+        cc: effect.cc,
+        test: effect.test,
+        invoice: effect.invoice,
+        openAmount: effect.amount,
+        effect,
+        note: journal.effect
+          ? "Wiederaufnahme: Die Erinnerung war bereits verschickt."
+          : "Wiederaufnahme: Die Erinnerung war bereits verschickt. Betrag und Inhalt sind dazu nicht mehr bekannt.",
+      };
     }
 
     await writeJournal("reminder", ctx.callId, { status: "pending" });
@@ -186,7 +200,9 @@ export default defineTool({
             : `Zu ${target.voucherNumber} ist über eine andere Freigabe schon eine Erinnerung rausgegangen oder unterwegs — nichts verschickt.`,
       };
     }
-    await writeJournal("reminder", ctx.callId, { status: "created", resourceId: target.invoiceId });
+    // What went out, in a fixed shape an app's protocol keeps as it is.
+    const effect = paymentReminderEffect(target, outcome);
+    await writeJournal("reminder", ctx.callId, { status: "created", resourceId: target.invoiceId, effect });
     return {
       sent: true,
       to: target.to,
@@ -195,18 +211,7 @@ export default defineTool({
       invoice: target.voucherNumber,
       openAmount: outcome.openAmount,
       attachment: outcome.attachment,
-      // What went out, in a fixed shape an app's protocol keeps as it is.
-      effect: {
-        kind: "payment_reminder",
-        to: target.to,
-        cc: target.cc ?? [],
-        test: target.test,
-        invoice: target.voucherNumber,
-        invoiceId: target.invoiceId,
-        amount: outcome.openAmount,
-        currency: target.currency,
-        contentSha256: outcome.contentSha256,
-      },
+      effect,
       note: target.test
         ? `Testversand an ${target.to}. Im Echtbetrieb ginge die Erinnerung an ${target.customer ?? "den Kunden (keine Adresse hinterlegt)"}.`
         : `Erinnerung an ${target.to} verschickt.`,

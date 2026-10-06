@@ -45,7 +45,9 @@ export {
   type ReminderSelection,
   type ReminderStatus,
   mailContentSha256,
+  paymentReminderEffect,
   sendReminder,
+  type PaymentReminderEffect,
   type ReminderTarget,
   type SendReminderOutcome,
 } from "./reminders.ts";

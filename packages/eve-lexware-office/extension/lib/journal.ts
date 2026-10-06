@@ -7,11 +7,15 @@
  * Never throws: an unwritable journal must not block an approved action.
  */
 
+import type { PaymentReminderEffect } from "@kevludwig/lexware-office";
+
 import { key, store } from "./runtime";
 
 export interface JournalEntry {
   status: "pending" | "created" | "attached";
   resourceId?: string;
+  /** What a sent payment reminder did, kept so a replay returns the same proof. */
+  effect?: PaymentReminderEffect;
   at: string;
 }
 
