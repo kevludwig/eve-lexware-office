@@ -44,6 +44,7 @@ export {
   type ReminderRecord,
   type ReminderSelection,
   type ReminderStatus,
+  mailContentSha256,
   sendReminder,
   type ReminderTarget,
   type SendReminderOutcome,

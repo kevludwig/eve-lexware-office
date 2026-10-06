@@ -7,6 +7,7 @@ import {
   defaultReminderMail,
   memoryStore,
   reminderLedger,
+  mailContentSha256,
   sendReminder,
   type ReminderMail,
   type ReminderTarget,
@@ -62,7 +63,8 @@ beforeEach(() => {
 describe("sendReminder", () => {
   it("sends once with the PDF and Cc, and records it", async () => {
     const outcome = await send("a");
-    assert.deepEqual(outcome, { sent: true, openAmount: 761.6, attachment: "RE1.pdf" });
+    assert.deepEqual(outcome, { sent: true, openAmount: 761.6, attachment: "RE1.pdf", contentSha256: mailContentSha256(sent[0]!) });
+    assert.match(outcome.sent ? outcome.contentSha256 : "", /^[0-9a-f]{64}$/);
     assert.equal(sent.length, 1);
     assert.deepEqual([sent[0]!.to, sent[0]!.cc], ["kunde@example.com", ["owner@example.com"]]);
     assert.equal(sent[0]!.attachments[0]!.mediaType, "application/pdf");

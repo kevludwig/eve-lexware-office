@@ -195,6 +195,18 @@ export default defineTool({
       invoice: target.voucherNumber,
       openAmount: outcome.openAmount,
       attachment: outcome.attachment,
+      // What went out, in a fixed shape an app's protocol keeps as it is.
+      effect: {
+        kind: "payment_reminder",
+        to: target.to,
+        cc: target.cc ?? [],
+        test: target.test,
+        invoice: target.voucherNumber,
+        invoiceId: target.invoiceId,
+        amount: outcome.openAmount,
+        currency: target.currency,
+        contentSha256: outcome.contentSha256,
+      },
       note: target.test
         ? `Testversand an ${target.to}. Im Echtbetrieb ginge die Erinnerung an ${target.customer ?? "den Kunden (keine Adresse hinterlegt)"}.`
         : `Erinnerung an ${target.to} verschickt.`,

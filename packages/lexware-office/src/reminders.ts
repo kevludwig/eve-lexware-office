@@ -18,6 +18,7 @@ import type { LexwareClient } from "./client.ts";
 import { contactEmail } from "./contacts.ts";
 import { addDays, daysSince } from "./dates.ts";
 import { downloadInvoicePdf, findOverdueInvoice, findOverdueInvoices, type OverdueInvoice } from "./receivables.ts";
+import { createHash } from "node:crypto";
 import { MailNotSentError, type RenderReminderMail, type ReminderMail, type SendReminderMail } from "./reminder-mail.ts";
 import { keySegment, type JsonStore } from "./store.ts";
 
@@ -224,7 +225,13 @@ export interface ReminderTarget {
 }
 
 export type SendReminderOutcome =
-  | { sent: true; openAmount: number; attachment: string }
+  | {
+      sent: true;
+      openAmount: number;
+      attachment: string;
+      /** sha256 of subject, text and HTML as sent: proves what went out without keeping the mail. */
+      contentSha256: string;
+    }
   | { sent: false; reason: "paid" | "taken" };
 
 /**
@@ -288,5 +295,14 @@ export async function sendReminder(
       ...(options.sessionId ? { sessionId: options.sessionId } : {}),
     })
     .catch(() => {});
-  return { sent: true, openAmount: still.openAmount, attachment: mail.attachments[0]!.filename };
+  return { sent: true, openAmount: still.openAmount, attachment: mail.attachments[0]!.filename, contentSha256: mailContentSha256(mail) };
+}
+
+/**
+ * The fingerprint of a mail's content: subject, plain text and HTML, joined
+ * with a separator that cannot occur in them. The same mail always gives the
+ * same hash; a protocol can keep it instead of the mail.
+ */
+export function mailContentSha256(mail: Pick<ReminderMail, "subject" | "html" | "text">): string {
+  return createHash("sha256").update([mail.subject, mail.text ?? "", mail.html].join("\u0000")).digest("hex");
 }
