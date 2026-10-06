@@ -8,6 +8,7 @@ import {
   memoryStore,
   reminderLedger,
   mailContentSha256,
+  paymentReminderEffect,
   sendReminder,
   type ReminderMail,
   type ReminderTarget,
@@ -110,6 +111,29 @@ describe("sendReminder", () => {
   it("sends nothing once the invoice is paid", async () => {
     overdue = false;
     assert.deepEqual(await send("a"), { sent: false, reason: "paid" });
+  });
+});
+
+describe("paymentReminderEffect", () => {
+  it("states what went out, from the target and the send's outcome", async () => {
+    const outcome = await send("a");
+    assert.ok(outcome.sent);
+    assert.deepEqual(paymentReminderEffect(target, outcome), {
+      kind: "payment_reminder",
+      to: "kunde@example.com",
+      cc: ["owner@example.com"],
+      test: false,
+      invoice: "RE1",
+      invoiceId: "inv",
+      amount: 761.6,
+      currency: "EUR",
+      contentSha256: mailContentSha256(sent[0]!),
+    });
+  });
+
+  it("leaves amount and hash unknown when reconstructed without an outcome", () => {
+    const effect = paymentReminderEffect({ ...target, cc: undefined, test: true }, null);
+    assert.deepEqual([effect.cc, effect.test, effect.amount, effect.contentSha256], [[], true, null, null]);
   });
 });
 

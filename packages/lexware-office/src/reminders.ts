@@ -235,6 +235,48 @@ export type SendReminderOutcome =
   | { sent: false; reason: "paid" | "taken" };
 
 /**
+ * What a sent payment reminder did, in a fixed shape an app's protocol keeps
+ * as it is. `amount` and `contentSha256` are null only when the effect is
+ * reconstructed after the fact and they are no longer known — never guessed.
+ */
+export interface PaymentReminderEffect {
+  kind: "payment_reminder";
+  to: string;
+  cc: string[];
+  test: boolean;
+  /** The invoice's voucher number. */
+  invoice: string;
+  invoiceId: string;
+  /** The open amount the mail stated. */
+  amount: number | null;
+  currency: string;
+  /** sha256 of the mail's content, see mailContentSha256. */
+  contentSha256: string | null;
+}
+
+/**
+ * The effect of a reminder sent to `target`. Pass the send's outcome; pass
+ * null to reconstruct it from the target alone, which leaves amount and hash
+ * unknown (null).
+ */
+export function paymentReminderEffect(
+  target: ReminderTarget,
+  sent: { openAmount: number; contentSha256: string } | null,
+): PaymentReminderEffect {
+  return {
+    kind: "payment_reminder",
+    to: target.to,
+    cc: [...(target.cc ?? [])],
+    test: target.test,
+    invoice: target.voucherNumber,
+    invoiceId: target.invoiceId,
+    amount: sent?.openAmount ?? null,
+    currency: target.currency,
+    contentSha256: sent?.contentSha256 ?? null,
+  };
+}
+
+/**
  * Sends one reminder, at most once per round: re-checks that the invoice is
  * still overdue, claims the round, renders and sends with the invoice PDF,
  * and records it. Up to the mail call nothing has left, so a failure there
