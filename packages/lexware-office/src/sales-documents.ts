@@ -8,9 +8,12 @@ import { DUPLICATE_TOTAL_TOLERANCE, round2 } from "./money.ts";
 
 export type SalesDocumentKind = "quotation" | "order-confirmation" | "invoice";
 
-/** One line of a sales document. */
-export interface LineItem {
+/** A line with a price — counts towards the total unless it is optional. */
+export interface PricedLineItem {
+  type?: "custom";
   name: string;
+  /** Free text under the name; Markdown (bold, italic, lists). Max. 2000 characters. */
+  description?: string;
   quantity: number;
   /** e.g. "Stück", "Stunde". */
   unit: string;
@@ -18,7 +21,27 @@ export interface LineItem {
   netPrice: number;
   /** 0, 7, or 19. */
   taxRate: number;
+  /** Quotations only: printed as "Optionale Position", not part of the total. */
+  optional?: boolean;
 }
+
+/** A line without a price: a heading or a paragraph between positions. */
+export interface TextLineItem {
+  type: "text";
+  name: string;
+  description?: string;
+}
+
+/** One line of a sales document. */
+export type LineItem = PricedLineItem | TextLineItem;
+
+export const isPricedLine = (item: LineItem): item is PricedLineItem => item.type !== "text";
+
+/** Whether a line adds to the document's total: priced and not optional. */
+export const countsToTotal = (item: LineItem): item is PricedLineItem => isPricedLine(item) && !item.optional;
+
+/** Lexware's limits for the texts of a sales document (FAQ "Texts in Sales Vouchers"). */
+export const SALES_TEXT_LIMITS = { introduction: 2000, remark: 2000, title: 25, lineItemName: 255, lineItemDescription: 2000 } as const;
 
 const ENDPOINTS: Record<SalesDocumentKind, string> = {
   quotation: "/quotations",
@@ -51,8 +74,10 @@ export interface CreatedSalesDocument {
 
 /**
  * Creates a sales document. `finalize` gives it a number right away — it can
- * then no longer be deleted like a draft. Neither `introduction` nor `remark`
- * is set: a value would replace the default texts of the account's settings.
+ * then no longer be deleted like a draft. `introduction` and `remark` replace
+ * the default texts of the account's settings — left out, the defaults stay.
+ * Only quotations know optional lines; on other kinds this throws instead of
+ * the API dropping the flag and counting the line.
  *
  * `precedingSalesVoucherId` links the document to its predecessor (a pursued
  * quotation becomes accepted) — only as a query parameter; in the body the API
@@ -73,26 +98,29 @@ export async function createSalesDocument(
     /** Total discount in EUR on the net amount. */
     totalDiscountAbsolute?: number;
     precedingSalesVoucherId?: string;
+    /** Opening text; Markdown. Max. 2000 characters. */
+    introduction?: string;
+    /** Closing text; Markdown. Max. 2000 characters. */
+    remark?: string;
   },
   signal?: AbortSignal,
 ): Promise<CreatedSalesDocument> {
+  if (options.kind !== "quotation" && options.items.some((item) => isPricedLine(item) && item.optional)) {
+    throw new Error(`Optional line items exist only on quotations, not on ${options.kind}`);
+  }
   const voucherDate = new Date().toISOString().replace("Z", "+00:00");
   const discount = options.totalDiscountAbsolute ?? 0;
   const payload: Record<string, unknown> = {
     voucherDate,
     address: { contactId: options.contactId },
-    lineItems: options.items.map((item) => ({
-      type: "custom",
-      name: item.name,
-      quantity: item.quantity,
-      unitName: item.unit,
-      unitPrice: { currency: "EUR", netAmount: item.netPrice, taxRatePercentage: item.taxRate },
-    })),
+    lineItems: options.items.map(toApiLine),
     totalPrice: { currency: "EUR", ...(discount > 0 ? { totalDiscountAbsolute: round2(discount) } : {}) },
     taxConditions: { taxType: "net" },
     shippingConditions: { shippingType: "delivery", shippingDate: voucherDate },
     ...(options.title ? { title: options.title } : {}),
     ...(options.expirationDate ? { expirationDate: toIsoDateTime(options.expirationDate) } : {}),
+    ...(options.introduction ? { introduction: options.introduction } : {}),
+    ...(options.remark ? { remark: options.remark } : {}),
   };
   const params = query({ finalize: options.finalize ? true : undefined, precedingSalesVoucherId: options.precedingSalesVoucherId });
   const result = await client.request<{ id: string; resourceUri?: string }>(`${ENDPOINTS[options.kind]}${params}`, {
@@ -101,6 +129,20 @@ export async function createSalesDocument(
     signal,
   });
   return { id: result.id, resourceUri: result.resourceUri, url: client.voucherUrl(result.id) };
+}
+
+function toApiLine(item: LineItem): Record<string, unknown> {
+  const description = item.description ? { description: item.description } : {};
+  if (!isPricedLine(item)) return { type: "text", name: item.name, ...description };
+  return {
+    type: "custom",
+    name: item.name,
+    ...description,
+    quantity: item.quantity,
+    unitName: item.unit,
+    unitPrice: { currency: "EUR", netAmount: item.netPrice, taxRatePercentage: item.taxRate },
+    ...(item.optional ? { optional: true } : {}),
+  };
 }
 
 /** Whether a 406 rejects the pursue, not the payload — then a retry without the link makes sense. */
@@ -125,9 +167,17 @@ export interface SalesDocumentDetail {
   voucherStatus?: string;
   contactId?: string;
   contactName?: string;
-  /** Net total over the priced lines — NaN for a document without any. */
+  /** Net total over the lines that count (priced, not optional) — NaN for a document without any. */
   lineItemsNet: number;
-  lineItems: LineItem[];
+  /** The lines that count towards the total. */
+  lineItems: PricedLineItem[];
+  /** Optional lines (quotations) — not in the total. */
+  optionalItems: PricedLineItem[];
+  /**
+   * Optional or alternative lines — an order confirmation cannot be pursued
+   * from such a quotation (the API answers 406).
+   */
+  hasOptionalOrAlternative: boolean;
   /** The final net total — after a total discount. */
   totalNet?: number;
   /** A total discount is invisible in the lines. */
@@ -135,26 +185,41 @@ export interface SalesDocumentDetail {
   discountPercentage?: number;
 }
 
-/** A document reduced to the fields a comparison needs. Text lines (no price) are left out. */
+/** A document reduced to the fields a comparison needs. Text lines (no price) are left out, optional ones kept apart. */
 export async function getSalesDocument(client: LexwareClient, kind: SalesDocumentKind, id: string, signal?: AbortSignal): Promise<SalesDocumentDetail> {
   const raw = await client.request<{
     id: string;
     voucherNumber?: string;
     voucherStatus?: string;
     address?: { contactId?: string; name?: string };
-    lineItems?: Array<{ name?: string; quantity?: number; unitName?: string; unitPrice?: { netAmount?: number; taxRatePercentage?: number } }>;
+    lineItems?: Array<{
+      type?: string;
+      name?: string;
+      description?: string;
+      quantity?: number;
+      unitName?: string;
+      unitPrice?: { netAmount?: number; taxRatePercentage?: number };
+      optional?: boolean;
+      subItems?: unknown[];
+    }>;
     totalPrice?: { totalNetAmount?: number; totalDiscountAbsolute?: number; totalDiscountPercentage?: number };
   }>(`${ENDPOINTS[kind]}/${encodeURIComponent(id)}`, { signal });
 
-  const items = (raw.lineItems ?? [])
-    .filter((item) => item.unitPrice !== undefined)
-    .map((item) => ({
-      name: item.name ?? "",
-      quantity: item.quantity ?? 0,
-      unit: item.unitName ?? "Stück",
-      netPrice: item.unitPrice?.netAmount ?? 0,
-      taxRate: item.unitPrice?.taxRatePercentage ?? 19,
-    }));
+  const lines = raw.lineItems ?? [];
+  const priced = lines
+    .filter((item) => item.type !== "text" && item.unitPrice !== undefined)
+    .map(
+      (item): PricedLineItem => ({
+        name: item.name ?? "",
+        ...(item.description ? { description: item.description } : {}),
+        quantity: item.quantity ?? 0,
+        unit: item.unitName ?? "Stück",
+        netPrice: item.unitPrice?.netAmount ?? 0,
+        taxRate: item.unitPrice?.taxRatePercentage ?? 19,
+        ...(item.optional ? { optional: true } : {}),
+      }),
+    );
+  const items = priced.filter((item) => !item.optional);
   return {
     id: raw.id,
     url: client.voucherUrl(raw.id),
@@ -164,6 +229,8 @@ export async function getSalesDocument(client: LexwareClient, kind: SalesDocumen
     contactName: raw.address?.name,
     lineItemsNet: items.length === 0 ? Number.NaN : round2(items.reduce((sum, item) => sum + item.quantity * item.netPrice, 0)),
     lineItems: items,
+    optionalItems: priced.filter((item) => item.optional),
+    hasOptionalOrAlternative: lines.some((item) => item.optional === true || (item.subItems?.length ?? 0) > 0),
     totalNet: raw.totalPrice?.totalNetAmount,
     discountAbsolute: raw.totalPrice?.totalDiscountAbsolute,
     discountPercentage: raw.totalPrice?.totalDiscountPercentage,

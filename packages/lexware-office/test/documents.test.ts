@@ -120,6 +120,50 @@ describe("sales documents", () => {
     assert.equal(calls[0]!.query.get("finalize"), null);
   });
 
+  it("sends headings, descriptions, optional lines, introduction and remark as a written quotation has them", async () => {
+    const { client, calls } = fakeApi(on("POST", /^\/quotations$/, () => ({ id: "q1" })));
+    await createSalesDocument(client, {
+      kind: "quotation",
+      contactId: "c1",
+      items: [
+        { type: "text", name: "Teil 1: Festpreis", description: "Zwei Korrekturschleifen je Position." },
+        { name: "Shop-Grundeinrichtung", description: "Enthalten:\n- Shop\n- Domain", quantity: 1, unit: "Pauschale", netPrice: 400, taxRate: 19 },
+        { name: "Übersetzung auf Autopilot", quantity: 1, unit: "Monat", netPrice: 149, taxRate: 19, optional: true },
+      ],
+      introduction: "Ausgangslage",
+      remark: "Bedingungen",
+    });
+    const body = calls[0]!.body as { lineItems: Record<string, unknown>[]; introduction?: string; remark?: string };
+    assert.deepEqual(body.lineItems[0], { type: "text", name: "Teil 1: Festpreis", description: "Zwei Korrekturschleifen je Position." });
+    assert.equal(body.lineItems[1]!.description, "Enthalten:\n- Shop\n- Domain");
+    assert.equal(body.lineItems[1]!.optional, undefined);
+    assert.equal(body.lineItems[2]!.optional, true);
+    assert.equal(body.introduction, "Ausgangslage");
+    assert.equal(body.remark, "Bedingungen");
+    assert.equal(calls[0]!.query.get("finalize"), null);
+  });
+
+  it("leaves introduction and remark to the account's defaults when none are given", async () => {
+    const { client, calls } = fakeApi(on("POST", /^\/order-confirmations$/, () => ({ id: "o1" })));
+    await createSalesDocument(client, { kind: "order-confirmation", contactId: "c1", items: [{ type: "text", name: "Teil 1" }] });
+    const body = calls[0]!.body as Record<string, unknown>;
+    assert.equal("introduction" in body, false);
+    assert.equal("remark" in body, false);
+  });
+
+  it("refuses optional lines outside a quotation instead of letting them count", async () => {
+    const { client, calls } = fakeApi(on("POST", /./, () => ({ id: "x" })));
+    await assert.rejects(
+      createSalesDocument(client, {
+        kind: "order-confirmation",
+        contactId: "c1",
+        items: [{ name: "A", quantity: 1, unit: "Stück", netPrice: 1, taxRate: 19, optional: true }],
+      }),
+      /only on quotations/,
+    );
+    assert.equal(calls.length, 0);
+  });
+
   it("recognises a rejected pursue", () => {
     const pursue = new LexwareApiError({ status: 406, statusText: "", method: "POST", path: "/invoices", responseBody: "precedingSalesVoucherId invalid" });
     const payload = new LexwareApiError({ status: 406, statusText: "", method: "POST", path: "/invoices", responseBody: "title too long" });
@@ -142,6 +186,25 @@ describe("sales documents", () => {
     assert.equal(detail.lineItems.length, 1);
     assert.equal(detail.discountAbsolute, 2);
     assert.equal(detail.contactName, "Kunde GmbH");
+    assert.equal(detail.hasOptionalOrAlternative, false);
+  });
+
+  it("keeps optional lines out of the total and notes them for the pursue", async () => {
+    const { client } = fakeApi(
+      on("GET", /^\/quotations\/q1$/, () => ({
+        id: "q1",
+        lineItems: [
+          { type: "text", name: "Teil 1" },
+          { type: "custom", name: "A", quantity: 1, unitName: "Stück", unitPrice: { netAmount: 400, taxRatePercentage: 19 }, optional: false },
+          { type: "custom", name: "B", description: "laufend", quantity: 1, unitName: "Monat", unitPrice: { netAmount: 149, taxRatePercentage: 19 }, optional: true },
+        ],
+      })),
+    );
+    const detail = await getSalesDocument(client, "quotation", "q1");
+    assert.equal(detail.lineItemsNet, 400);
+    assert.deepEqual(detail.lineItems.map((item) => item.name), ["A"]);
+    assert.deepEqual(detail.optionalItems, [{ name: "B", description: "laufend", quantity: 1, unit: "Monat", netPrice: 149, taxRate: 19, optional: true }]);
+    assert.equal(detail.hasOptionalOrAlternative, true);
   });
 
   it("finds a duplicate by line-item total and says when it could not check all", async () => {
