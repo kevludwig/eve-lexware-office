@@ -40,9 +40,9 @@ The file name is the namespace: this mount gives the agent `lexware__read`, `lex
 | `read` | One tool for the readable endpoints: contacts, articles, voucher list, single documents, posting categories, payment conditions, profile, countries. Writes nothing. | no |
 | `due_payment_reminders` | Which overdue invoices are due for a reminder right now, and why the others are not. Reads only. | no |
 | `create_customer` | A customer contact — name and address required. | yes |
-| `create_quotation` | A quotation. Finalized on creation, so it gets its number. | yes |
-| `create_order_confirmation` | An order confirmation, optionally following a quotation (`quotation_id`). Finalized. | yes |
-| `create_invoice` | An outgoing invoice, optionally following a quotation or order confirmation. **Always a draft** — you finalize and send it in Lexware Office. | yes |
+| `create_quotation` | A quotation as written by hand: positions with a `description`, `type: "text"` headings, `optional` positions outside the total, `introduction` and `remark`. Finalized on creation, so it gets its number — or a draft with `draft: true`. | yes |
+| `create_order_confirmation` | An order confirmation, optionally following a quotation (`quotation_id`). Descriptions, headings and texts as on a quotation, no optional positions. Finalized, or a draft with `draft: true`. Lexware Office does not chain it to a quotation with optional positions. | yes |
+| `create_invoice` | An outgoing invoice, optionally following a quotation or order confirmation. Descriptions, headings and texts as above. **Always a draft** — you finalize and send it in Lexware Office. | yes |
 | `create_purchase_invoice` | A purchase invoice as a voucher, with the original attached, amounts per tax rate, and the posting category. Foreign currency is booked with the amount actually debited. | yes |
 | `send_payment_reminder` | One friendly reminder by mail, with the invoice PDF attached. | yes |
 
