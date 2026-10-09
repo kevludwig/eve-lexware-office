@@ -36,7 +36,7 @@ A failed request throws `LexwareApiError` with `status` and `responseBody`; `des
 
 **Contacts** — `getContact`, `findContactByNumber`, `findContactsByName`, `resolveContactByName` (exact name first, then the single candidate), `contactEmail`, `createCustomer`.
 
-**Sales documents** — `createSalesDocument` for quotations, order confirmations, and invoices, with `finalize`, a total discount, and `precedingSalesVoucherId` for a document chain; `getSalesDocument` (line items, totals, discounts, customer), `invoiceExists`, `findRecentSalesDocuments`, `findDuplicateSalesDocument` (same net total, same customer, within a window), `isPursueRejection` for the 406 an unusable chain answers with.
+**Sales documents** — `createSalesDocument` for quotations, order confirmations, and invoices, with `finalize`, a total discount, `precedingSalesVoucherId` for a document chain, `introduction` and `remark`, and line items that are priced (with an optional `description`; `optional` on quotations) or `type: "text"` headings; `SALES_TEXT_LIMITS` holds the API's text lengths; `getSalesDocument` (the lines that count, optional lines apart, totals, discounts, customer), `invoiceExists`, `findRecentSalesDocuments`, `findDuplicateSalesDocument` (same net total, same customer, within a window), `isPursueRejection` for the 406 an unusable chain answers with.
 
 **Purchase invoices** — `createVoucher`, `uploadVoucherFile` for the original, `findVouchers`, `findPurchaseInvoiceByNumber` for a document already captured, `findVendorCategoryHistory` for how this vendor's invoices were booked so far.
 
