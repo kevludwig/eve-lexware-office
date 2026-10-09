@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 
 import "./harness.ts";
 
-const { approvalCard, ownTool } = await import("../dist/extension/lib/cards.mjs");
+const { CARD_TEXT_BUDGET, approvalCard, ownTool } = await import("../dist/extension/lib/cards.mjs");
 
 const factOf = (card: { facts: { title: string; value: string }[] }, title: string) => card.facts.find((fact) => fact.title === title)?.value;
 
@@ -46,6 +46,79 @@ describe("approvalCard", () => {
 
     assert.equal(factOf(card, "Kontakt"), "c-1");
     assert.equal(factOf(card, "Bezugsbeleg"), "q-1");
+  });
+
+  it("marks a draft quotation in title, subtitle and note", () => {
+    const card = approvalCard("lexware__create_quotation", "call", { customer_number: 10001, items, draft: true })!;
+
+    assert.equal(card.title, "Angebot als Entwurf anlegen?");
+    assert.match(card.subtitle!, /· Entwurf$/);
+    assert.match(card.note!, /^Entwurf — nicht festgeschrieben/);
+  });
+
+  it("marks a draft order confirmation the same way", () => {
+    const card = approvalCard("lexware__create_order_confirmation", "call", { customer_number: 10001, items, draft: true })!;
+    assert.equal(card.title, "Auftragsbestätigung als Entwurf anlegen?");
+    assert.match(card.note!, /AB-Nummer/);
+  });
+
+  it("lists headings, described positions and optional lines apart, with their own total", () => {
+    const card = approvalCard("lexware__create_quotation", "call", {
+      customer_number: 10001,
+      items: [
+        { type: "text", name: "Teil 1: Festpreis", description: "Leistungen mit festem Umfang auf Basis der genannten Annahmen und zwei Korrekturschleifen." },
+        { ...items[0], description: "**Enthalten:**\n- Workshop vor Ort\n- Protokoll" },
+        { name: "Wartung", quantity: 1, unit: "Monat", net_price: 149, tax_rate: 19, optional: true },
+        items[1],
+      ],
+      introduction: "Ausgangslage",
+    })!;
+
+    assert.equal(card.subtitle, "2 Positionen · 2.550,00 EUR netto · 1 optional");
+    assert.equal(factOf(card, "Netto"), "2.550,00 EUR");
+    assert.equal(factOf(card, "Optional"), "1 Pos. · 149,00 EUR netto, nicht in der Summe");
+    assert.equal(factOf(card, "Einleitung"), "eigener Text (12 Zeichen)");
+    assert.equal(factOf(card, "Schlussnotiz"), "Standard aus Lexware Office");
+    const titles = card.facts.map((fact) => fact.title);
+    assert.deepEqual(titles.slice(titles.indexOf("Schlussnotiz") + 1), ["▸ Teil 1: Festpreis", "1. Workshop-Tag", "2. Anreisepauschale", "Optional 3. Wartung"]);
+    assert.equal(factOf(card, "▸ Teil 1: Festpreis"), "Leistungen mit festem Umfang auf Basis der genannten Annahm…");
+    assert.equal(factOf(card, "1. Workshop-Tag"), "2 Tag × 1.200,00 EUR · Enthalten:");
+    assert.equal(factOf(card, "Optional 3. Wartung"), "1 Monat × 149,00 EUR");
+  });
+
+  it("stays within the card budget with 300 long positions", () => {
+    const many = Array.from({ length: 300 }, (_, index) => ({
+      name: `Position ${index} ${"mit sehr langem Namen ".repeat(10)}`.slice(0, 255),
+      description: "y".repeat(2000),
+      quantity: 1,
+      unit: "Stück",
+      net_price: 1,
+      tax_rate: 19,
+      ...(index % 2 ? { optional: true } : {}),
+    }));
+    const card = approvalCard("lexware__create_quotation", "call", { customer_number: 10001, items: many, introduction: "x".repeat(2000) })!;
+    const length = [card.title, card.subtitle, card.note, ...card.facts.flatMap((fact) => [fact.title, fact.value])].join("").length;
+
+    assert.ok(length <= CARD_TEXT_BUDGET, `${length} characters`);
+    assert.match(card.facts.at(-1)!.value, /weitere Zeilen/);
+    assert.equal(new Set(card.facts.map((fact) => fact.title)).size, card.facts.length);
+  });
+
+  it("shows a written quotation like CARRY NATION's in full", () => {
+    const fixed = ["Shop-Grundeinrichtung", "Markengestaltung im Theme", "Theme-Optimierung", "Produkte und Zusatzverkauf", "Sieben Sprachen", "Rechtstexte mit der IT-Recht Kanzlei", "Technisches SEO international", "Sichtbarkeit in der KI-Suche", "Qualitätssicherung und Go-live"];
+    const lines = [
+      { type: "text", name: "Teil 1: Festpreis", description: "Leistungen mit festem Umfang auf Basis der genannten Annahmen." },
+      ...fixed.map((name) => ({ name, description: `Enthalten:\n- ${"Leistung ".repeat(80)}`, quantity: 1, unit: "Pauschale", net_price: 400, tax_rate: 19 })),
+      { type: "text", name: "Teil 2: Leistungen nach Aufwand" },
+      { name: "Aufwandskontingent", description: "Kontingent, kein Mindestabruf", quantity: 6, unit: "Stunde", net_price: 160, tax_rate: 19 },
+      { type: "text", name: "Teil 3: Laufender Betrieb (optional)" },
+      { name: "Übersetzung auf Autopilot", description: "x".repeat(1950), quantity: 1, unit: "Monat", net_price: 149, tax_rate: 19, optional: true },
+    ];
+    const card = approvalCard("lexware__create_quotation", "call", { customer_number: 10001, items: lines, introduction: "x".repeat(877), remark: "x".repeat(1201), draft: true })!;
+
+    assert.equal(card.facts.filter((fact) => /^(▸ |\d+\. |Optional \d)/.test(fact.title)).length, 14);
+    assert.ok(!card.facts.some((fact) => fact.title === "…"));
+    assert.equal(factOf(card, "Optional 11. Übersetzung auf Autopilot")?.startsWith("1 Monat × 149,00 EUR · "), true);
   });
 
   it("says an invoice stays a draft", () => {

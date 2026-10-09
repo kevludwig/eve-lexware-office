@@ -9,9 +9,11 @@ z.B. `lexware__create_quotation`.
 
 Drei Tools, jedes autark nutzbar — es gibt keine Pflicht-Reihenfolge:
 
-- `create_quotation` — Angebot, wird beim Anlegen **festgeschrieben**.
-- `create_order_confirmation` — Auftragsbestätigung, wird **festgeschrieben**.
-  Optional aus einem Angebot abgeleitet (`quotation_id`).
+- `create_quotation` — Angebot, wird beim Anlegen **festgeschrieben**; mit
+  `draft: true` als **Entwurf**.
+- `create_order_confirmation` — Auftragsbestätigung, wird **festgeschrieben**;
+  mit `draft: true` als Entwurf. Optional aus einem Angebot abgeleitet
+  (`quotation_id`).
 - `create_invoice` — Rechnung, entsteht immer als **Entwurf**. Optional aus
   Angebot oder AB abgeleitet (`source_document_id` + `source_document_type`).
 
@@ -49,12 +51,20 @@ der Nummer, wenn du sie selbst finden kannst:
    fragen, ob der Beleg ohne Bezug entstehen soll.
 4. Den Beleg mit dem Lese-Tool (`/quotations/{id}` bzw.
    `/order-confirmations/{id}`) lesen und die Positionen aus `lineItems`
-   übernehmen: `name`, `quantity`, `unitName` → `unit`,
+   übernehmen: `name`, `description`, `quantity`, `unitName` → `unit`,
    `unitPrice.netAmount` → `net_price`, `unitPrice.taxRatePercentage` →
-   `tax_rate`.
+   `tax_rate`. Zeilen mit `type: "text"` als `{ type: "text", name,
+   description }`. **AB aus Angebot**: nur die Positionen ohne
+   `optional: true` übernehmen — eine optionale nur, wenn der Nutzer sie
+   beauftragt hat, dann als normale Position (ohne `optional`). Hat das Angebot
+   optionale Positionen, frag nach, welche beauftragt sind, falls der Auftrag
+   es nicht sagt.
 5. Die Quell-UUID mitgeben (`quotation_id` bzw. `source_document_id`) — das
-   Tool prüft dann Kunde und Positionssumme gegen den Bezugsbeleg und
-   verknüpft beide Belege in Lexware Office.
+   Tool prüft dann Kunde und Positionssumme gegen den Bezugsbeleg (optionale
+   Positionen zählen auf keiner Seite) und verknüpft beide Belege in Lexware
+   Office. Ausnahme: Ein Angebot mit optionalen Positionen verknüpft Lexware
+   Office nicht mit einer AB — die AB entsteht dann ohne Belegkette, die Karte
+   sagt es.
 
 Übernommen werden **nur die Positionen** — nicht der `title` des Bezugsbelegs:
 der Titel ist die gedruckte Überschrift, und eine AB mit dem Angebots-Titel
@@ -76,6 +86,37 @@ abweichendem Wunsch setzen).
 Erfinde keine Positionen und keine Preise: Fehlen Positionen oder Preise im
 Auftrag und gibt es keinen Bezugsbeleg, frage nach.
 
+## Aufbau wie ein schriftliches Angebot
+
+Liegt ein ausformuliertes Angebot vor (Dokument, Entwurf im Chat), bilde es
+1:1 ab — Reihenfolge, Überschriften, Texte:
+
+- **`description`** an einer Position: Leistungsumfang, „Enthalten“, „Nicht
+  enthalten“, Annahmen — wörtlich aus der Vorlage. Zeilenumbrüche als `\n`,
+  Markdown: `**fett**`, `__kursiv__`, Listen mit `- `. Höchstens 2000 Zeichen;
+  ist ein Text länger, kürze nicht still — sag, welche Position, und frag, was
+  wegfallen darf. Die Preiszeile der Vorlage („Festpreis · 400,00 €“) gehört
+  nicht in die Beschreibung, sie steht in Menge und Preis.
+- **Textpositionen** (`{ type: "text", name, description? }`) für
+  Zwischenüberschriften wie „Teil 1: Festpreis“ und für erklärende Absätze
+  zwischen Positionen. Ohne Menge, Preis, Steuer — sie zählen nicht zur Summe.
+- **`optional: true`** (nur im Angebot) für Wahlleistungen, die die Vorlage
+  „optional“ oder „nicht in der Summe“ nennt. Preis normal angeben; Lexware
+  Office druckt sie als „Optionale Position“ ohne sie zu summieren. AB und
+  Rechnung kennen keine optionalen Positionen.
+- **`introduction`** (Einleitung über den Positionen, z.B. Ausgangslage und
+  Ansatz) und **`remark`** (Schlussnotiz, z.B. Bedingungen, Zahlung,
+  Annahme), je höchstens 2000 Zeichen. Nur setzen, wenn die Vorlage eigene
+  Texte hat — weggelassen bleibt der Standardtext aus Lexware Office.
+- **`draft: true`** bei langen Angeboten: Der Entwurf lässt sich in Lexware
+  Office gegenlesen und anpassen, festgeschrieben wird dort. Empfiehl es von
+  dir aus, wenn das Angebot Beschreibungen über mehrere Positionen hat, und
+  sag nach dem Anlegen, dass es noch festgeschrieben werden muss.
+
+Die Summe der Vorlage (ohne optionale Positionen) muss mit der Summe der
+bepreisten Positionen übereinstimmen — prüfe das vor dem Aufruf und nenne
+Abweichungen.
+
 ## Ablauf
 
 1. Kunden auflösen, ggf. Vorgängerbeleg suchen (siehe oben).
@@ -86,8 +127,10 @@ Auftrag und gibt es keinen Bezugsbeleg, frage nach.
    Nutzer. Warnungen führen nicht zur Ablehnung — erwähne sie in der
    Ankündigung, wenn du sie schon kennst.
 4. Nach Erfolg melden: Belegart und -nummer, Kunde, Positionen, Netto, ggf.
-   „gültig bis" — mit Lexware Office-Link. Bei Angebot/AB dazu: festgeschrieben,
-   Versand aus Lexware Office. Bei Rechnung: Entwurf, festschreiben in Lexware Office.
+   optionale Positionen mit ihrer Summe und „gültig bis" — mit Lexware
+   Office-Link. Bei Angebot/AB dazu: festgeschrieben, Versand aus Lexware
+   Office — oder, als Entwurf: gegenlesen und festschreiben in Lexware Office.
+   Bei Rechnung: Entwurf, festschreiben in Lexware Office.
 
 Mehrere Belege in einem Auftrag („Angebot und gleich die AB dazu") sind in
 Ordnung: nacheinander, jeder mit eigener Freigabekarte, die AB mit der

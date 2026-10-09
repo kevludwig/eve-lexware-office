@@ -3,22 +3,40 @@ import { z } from "zod";
 
 import { approverPolicy } from "../lib/runtime";
 import { withCard } from "../lib/with-card";
-import { MAX_LINE_ITEMS, customerFields, executeSalesDocument, lineItemSchema, salesApproval, titleSchema, type SalesInput } from "../lib/sales";
+import {
+  COUNTING_LINE_MESSAGE,
+  MAX_LINE_ITEMS,
+  customerFields,
+  documentTextFields,
+  draftField,
+  executeSalesDocument,
+  hasCountingLine,
+  lineItemSchema,
+  salesApproval,
+  titleSchema,
+  type SalesInput,
+} from "../lib/sales";
 
 const inputSchema = z
   .object({
     ...customerFields,
     items: z
-      .array(lineItemSchema)
+      .array(lineItemSchema({ allowOptional: false }))
       .min(1)
       .max(MAX_LINE_ITEMS)
-      .describe("Alle Positionen der AB — beim Ableiten aus einem Angebot dessen Positionen (per Lese-Tool /quotations/{id}), plus gewünschte Änderungen"),
+      .refine(hasCountingLine, { message: COUNTING_LINE_MESSAGE })
+      .describe(
+        "Alle Positionen der AB — beim Ableiten aus einem Angebot dessen nicht-optionale Positionen (per Lese-Tool " +
+          "/quotations/{id}) und die optionalen, die der Kunde beauftragt hat, plus gewünschte Änderungen. Keine optionalen Positionen.",
+      ),
     title: titleSchema("der AB"),
     quotation_id: z
       .string()
       .uuid()
       .optional()
       .describe("UUID des Angebots, aus dem diese AB hervorgeht. Dann prüft das Tool Kunde und Positionssumme gegen das Angebot."),
+    ...documentTextFields,
+    ...draftField("die AB"),
   })
   .strict()
   .refine((input) => (input.customer_number === undefined) !== (input.contact_id === undefined), {
@@ -31,8 +49,9 @@ const withSource = (input: SalesInput & { quotation_id?: string }): SalesInput =
 
 export default defineTool({
   description:
-    "Erstellt eine Auftragsbestätigung (AB) in Lexware Office und schreibt sie direkt fest (sie erhält eine AB-Nummer; kein " +
-    "Entwurf). Geht die AB aus einem Angebot hervor, dessen quotation_id mitgeben — das Angebot vorher über /voucherlist " +
+    "Erstellt eine Auftragsbestätigung (AB) in Lexware Office und schreibt sie direkt fest (sie erhält eine AB-Nummer); mit " +
+    "draft: true entsteht ein Entwurf. Positionen mit Beschreibung und Textpositionen wie beim Angebot, aber ohne optionale. " +
+    "Geht die AB aus einem Angebot hervor, dessen quotation_id mitgeben — das Angebot vorher über /voucherlist " +
     "(voucherType 'quotation') suchen und lesen; bei mehreren passenden den Nutzer wählen lassen. Legt erst nach Freigabe an.",
   inputSchema,
   approval: { request: withCard(salesApproval("order-confirmation", withSource)), response: approverPolicy },

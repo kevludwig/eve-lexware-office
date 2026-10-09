@@ -26,6 +26,7 @@ export type Warning =
   | { kind: "source-mismatch"; sourceLabel: string; sourceNet: number; itemsNet: number; difference: number }
   | { kind: "source-discount"; sourceLabel: string; discountAbsolute?: number; discountPercentage?: number; sourceNet?: number }
   | { kind: "source-check-failed"; reason: string }
+  | { kind: "source-chain-impossible"; sourceLabel: string }
   // Purchase invoices
   | { kind: "voucher-total-mismatch"; computed: number; expected: number; difference: number; currency: string }
   | { kind: "voucher-reverse-charge"; categories: string[]; rate: number; invoiceChargesTax: boolean }
@@ -157,6 +158,11 @@ export function describeWarning(warning: Warning): Finding {
     }
     case "source-check-failed":
       return { title: "⚠ Bezugsbeleg", value: `nicht prüfbar — ${warning.reason}` };
+    case "source-chain-impossible":
+      return {
+        title: "⚠ Belegkette",
+        value: `${warning.sourceLabel} hat optionale Positionen — Lexware Office verknüpft die AB nicht damit; sie entsteht ohne Bezug`,
+      };
     case "voucher-total-mismatch":
       return {
         title: "⚠ Summenabgleich",

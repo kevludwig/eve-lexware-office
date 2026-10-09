@@ -3,14 +3,29 @@ import { z } from "zod";
 
 import { approverPolicy } from "../lib/runtime";
 import { withCard } from "../lib/with-card";
-import { MAX_LINE_ITEMS, customerFields, executeSalesDocument, lineItemSchema, salesApproval } from "../lib/sales";
+import {
+  COUNTING_LINE_MESSAGE,
+  MAX_LINE_ITEMS,
+  customerFields,
+  documentTextFields,
+  executeSalesDocument,
+  hasCountingLine,
+  lineItemSchema,
+  salesApproval,
+} from "../lib/sales";
 
 const inputSchema = z
   .object({
     ...customerFields,
-    items: z.array(lineItemSchema).min(1).max(MAX_LINE_ITEMS).describe("Alle Positionen der Rechnung"),
+    items: z
+      .array(lineItemSchema({ allowOptional: false }))
+      .min(1)
+      .max(MAX_LINE_ITEMS)
+      .refine(hasCountingLine, { message: COUNTING_LINE_MESSAGE })
+      .describe("Alle Positionen der Rechnung — bepreiste und Textpositionen, keine optionalen"),
     source_document_id: z.string().uuid().optional().describe("UUID des Angebots bzw. der AB, aus der diese Rechnung hervorgeht"),
     source_document_type: z.enum(["quotation", "order-confirmation"]).optional().describe("Art des Bezugsbelegs zu source_document_id"),
+    ...documentTextFields,
   })
   .strict()
   .refine((input) => (input.customer_number === undefined) !== (input.contact_id === undefined), {
@@ -23,8 +38,9 @@ const inputSchema = z
 export default defineTool({
   description:
     "Erstellt eine Ausgangsrechnung als Entwurf in Lexware Office — festgeschrieben und versendet wird dort, nie hier. " +
-    "Kunde per Kundennummer oder contact_id, dazu die Positionen; source_document_id, wenn die Rechnung aus einem Angebot " +
-    "oder einer AB hervorgeht. Legt erst nach Freigabe an und prüft vorher auf Dubletten.",
+    "Kunde per Kundennummer oder contact_id, dazu die Positionen (mit Beschreibung, Textpositionen als Zwischenüberschrift); " +
+    "source_document_id, wenn die Rechnung aus einem Angebot oder einer AB hervorgeht. Legt erst nach Freigabe an und " +
+    "prüft vorher auf Dubletten.",
   inputSchema,
   approval: { request: withCard(salesApproval("invoice")), response: approverPolicy },
   async execute(input, ctx) {
