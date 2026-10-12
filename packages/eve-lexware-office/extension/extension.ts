@@ -2,7 +2,7 @@ import type { JsonStore, LexwareClient, ReminderPolicy, ReminderSender, RenderRe
 import { defineExtension } from "eve/extension";
 import { z } from "zod";
 
-import type { ApprovalCard, AttachmentFallback, CapturedPurchase, Responder } from "./lib/types";
+import type { ApprovalCard, AttachmentFallback, CanApprove, CapturedPurchase } from "./lib/types";
 
 const isFunction = (value: unknown) => typeof value === "function";
 const isObjectWith = (...keys: string[]) => (value: unknown) =>
@@ -36,8 +36,13 @@ export default defineExtension({
         })
         .prefault({}),
 
-      /** Who may approve a writing tool. Default: anyone who may reach the session. */
-      canApprove: z.custom<(responder: Responder) => boolean | Promise<boolean>>(isFunction).optional(),
+      /**
+       * Who may approve a writing tool, or cancel it: `(responder, context)`.
+       * `context` is eve's approval response context — e.g.
+       * `context.session.initiator` to require that the approver owns the
+       * session. Default: anyone who may reach the session.
+       */
+      canApprove: z.custom<CanApprove>(isFunction).optional(),
 
       /** Receives the finished approval card of each writing tool, e.g. to show it in a web UI. */
       onApprovalCard: z.custom<(callId: string, card: ApprovalCard) => void | Promise<void>>(isFunction).optional(),

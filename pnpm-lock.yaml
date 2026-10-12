@@ -16,9 +16,12 @@ importers:
       '@kevludwig/lexware-office':
         specifier: workspace:*
         version: link:../../packages/lexware-office
+      ai:
+        specifier: 7.0.137
+        version: 7.0.137(zod@4.5.4)
       eve:
-        specifier: 0.70.0
-        version: 0.70.0(ai@7.0.109(zod@4.5.4))
+        specifier: 0.77.0
+        version: 0.77.0(ai@7.0.137(zod@4.5.4))
       zod:
         specifier: 4.5.4
         version: 4.5.4
@@ -45,9 +48,12 @@ importers:
       '@types/node':
         specifier: 24.x
         version: 24.13.6
+      ai:
+        specifier: 7.0.137
+        version: 7.0.137(zod@4.5.4)
       eve:
-        specifier: 0.70.0
-        version: 0.70.0(ai@7.0.109(zod@4.5.4))
+        specifier: 0.77.0
+        version: 0.77.0(ai@7.0.137(zod@4.5.4))
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -66,20 +72,20 @@ importers:
 
 packages:
 
-  '@ai-sdk/gateway@4.0.88':
-    resolution: {integrity: sha512-hpEdOAqrp3FOShSytk6n8BZVZ/xrCV7L9hqYA6Q55h7sQknvh99QfC0uQAIbQWjh+66tmo1Fo6ndQla8uCJGyA==}
+  '@ai-sdk/gateway@4.0.110':
+    resolution: {integrity: sha512-5IwnOR6v7KC+D9eddUqsCobXl/FbLUVb2LaQc/uyuQdpP3/n9s0YLc9zl4/W3IS/R2pjHrqUfCzEAeOu7bFLoQ==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider-utils@5.0.45':
-    resolution: {integrity: sha512-gLuaCups8OCIRz3eO6WWz5op7VLYNNtFzyH0sWUr0FE9v7cTxR0qxDpQdrKnGcql+9WWttobjnZsJVsuEbsPQQ==}
+  '@ai-sdk/provider-utils@5.0.58':
+    resolution: {integrity: sha512-iXSwKR/7LpHzAlyrUl+bTinwzmZ3Nmup1viwPisM5Gn5cogRdIG4rV9w1ZDuKFcrXyu/AeVs42E1CX/0aNwrfQ==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider@4.0.17':
-    resolution: {integrity: sha512-VYMBxIQdcHqbIf1j+YZlI9Ati6LZ4wJe0GGd4z4a5H/KxTggjeOiyaVYTnfF7LHZK5jMQ+rofmzz4QPqf++NUw==}
+  '@ai-sdk/provider@4.0.26':
+    resolution: {integrity: sha512-BZ443uBEq6HuMA+Z4b7Hpm65GpZSo7pWqnYqpf/7tAO3C48JbtvAhOE2JnODFj+jodsZzfRHkAyQb64xuD2tZQ==}
     engines: {node: '>=22'}
 
   '@oxc-project/types@0.150.0':
@@ -332,8 +338,8 @@ packages:
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
 
-  ai@7.0.109:
-    resolution: {integrity: sha512-hTnm8K4GIT0R6gHrnDJHr1KRnGVAtFa26mLtjqn/TGy+ufD5Y5XXerTEabLXVgmb9iunWxSFRCPOZUZ/VeXYLQ==}
+  ai@7.0.137:
+    resolution: {integrity: sha512-JxrPkSQknxIN/gYqS3UQksExS6eWI23QMPBrKMGXeeFHhru6xFtF4MuMq17WaHD+lXPh0lne6H0BM2Z2VMW9EQ==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -364,13 +370,13 @@ packages:
     resolution: {integrity: sha512-S8EFBKyznRwPVwayK187cYjvnpgC92xy+q0BIF++V965pfjMVVRbQ/HoTYGA/1EHmZ7E68k6Heq+4WnvVhOL5w==}
     hasBin: true
 
-  eve@0.70.0:
-    resolution: {integrity: sha512-qhWy8jOMIERFJZIlUeErcKp9SuFVvlymsQgdBvv1sDtLGiTXiz8+ueE1sal4rblCV8Esbijh2VFgWjuixR2byQ==}
+  eve@0.77.0:
+    resolution: {integrity: sha512-Gp50ST5kiyDw8qvGBUOqak1lBwNt7fNdZ68TrowfkUu2nMrrG4PFSED5ybhy+rSkX6z41l+Tqncm/2DE8n4b5A==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
-      ai: ^7.0.105
+      ai: ^7.0.137
       braintrust: ^3.0.0
       chat: ^4.41.0
       dd-trace: ^6.13.0
@@ -568,23 +574,23 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/gateway@4.0.88(zod@4.5.4)':
+  '@ai-sdk/gateway@4.0.110(zod@4.5.4)':
     dependencies:
-      '@ai-sdk/provider': 4.0.17
-      '@ai-sdk/provider-utils': 5.0.45(zod@4.5.4)
+      '@ai-sdk/provider': 4.0.26
+      '@ai-sdk/provider-utils': 5.0.58(zod@4.5.4)
       '@vercel/oidc': 3.2.0
       zod: 4.5.4
 
-  '@ai-sdk/provider-utils@5.0.45(zod@4.5.4)':
+  '@ai-sdk/provider-utils@5.0.58(zod@4.5.4)':
     dependencies:
-      '@ai-sdk/provider': 4.0.17
+      '@ai-sdk/provider': 4.0.26
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
       undici: 7.29.1
       zod: 4.5.4
 
-  '@ai-sdk/provider@4.0.17':
+  '@ai-sdk/provider@4.0.26':
     dependencies:
       json-schema: 0.4.0
 
@@ -731,11 +737,11 @@ snapshots:
 
   '@workflow/serde@4.1.0': {}
 
-  ai@7.0.109(zod@4.5.4):
+  ai@7.0.137(zod@4.5.4):
     dependencies:
-      '@ai-sdk/gateway': 4.0.88(zod@4.5.4)
-      '@ai-sdk/provider': 4.0.17
-      '@ai-sdk/provider-utils': 5.0.45(zod@4.5.4)
+      '@ai-sdk/gateway': 4.0.110(zod@4.5.4)
+      '@ai-sdk/provider': 4.0.26
+      '@ai-sdk/provider-utils': 5.0.58(zod@4.5.4)
       zod: 4.5.4
 
   async-retry@1.3.3:
@@ -763,9 +769,9 @@ snapshots:
       httpxy: 0.5.5
       srvx: 1.0.5
 
-  eve@0.70.0(ai@7.0.109(zod@4.5.4)):
+  eve@0.77.0(ai@7.0.137(zod@4.5.4)):
     dependencies:
-      ai: 7.0.109(zod@4.5.4)
+      ai: 7.0.137(zod@4.5.4)
       nitro: 3.0.260903-beta
       undici: 8.10.2
 

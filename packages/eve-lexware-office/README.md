@@ -8,7 +8,7 @@ Built on [`@kevludwig/lexware-office`](../lexware-office), which holds the API c
 npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office
 ```
 
-Node 24 or newer, eve 0.70 or newer.
+Node 24 or newer, eve 0.77 or newer.
 
 ## Mount it
 
@@ -68,7 +68,7 @@ Between card and click, hours can pass, so every writing tool checks again immed
 | `baseUrl`, `appUrl` | the API and app URLs | Only for another environment. |
 | `storage.store` | Vercel Blob | Where journal, reminder records, and send claims live. Any `JsonStore`. |
 | `storage.prefix` | `lexware-office` | Key prefix inside the store. |
-| `canApprove` | anyone in the session | `(responder) => boolean` — who may approve a write or cancel it. |
+| `canApprove` | anyone in the session | `(responder, context) => boolean` — who may approve a write or cancel it. See [Who may approve](#who-may-approve). |
 | `onApprovalCard` | — | `(callId, card)` with the finished card: title, subtitle, facts, note, findings. For your own UI. |
 | `conversationUrl` | — | `(sessionId) => string`, for "waits in another conversation". |
 | `attachments` | — | A second source for an upload the sandbox lost: `{ read, size?, release? }`. |
@@ -84,9 +84,34 @@ Between card and click, hours can pass, so every writing tool checks again immed
 
 Nothing reads the environment except the Blob store's own token — where the key, the mailer, and the approval rule come from is the mount's decision.
 
+### Who may approve
+
+`canApprove(responder, context)` runs for Approve and for Cancel. `responder` is the principal who answered. `context` is eve's `ApprovalResponseContext` (from `eve/tools/approval`):
+
+- `context.session.initiator` — who started the session, `null` if anonymous
+- `context.request.principal` — whose turn requested the call, `null` if anonymous
+- `context.response.decision` — `"approve"` or `"cancel"`
+- `context.request.toolName`, `context.request.toolInput`, `context.session.id`
+
+A `canApprove` that reads only `responder` keeps working. To require that the approver owns the session:
+
+```ts
+import type { SessionAuthContext } from "eve/context";
+
+const same = (a: SessionAuthContext, b: SessionAuthContext) =>
+  a.authenticator === b.authenticator && a.issuer === b.issuer && a.principalType === b.principalType && a.principalId === b.principalId;
+
+export default lexware({
+  // …
+  canApprove: (responder, { session }) => session.initiator !== null && same(responder, session.initiator) && isTeamMember(responder),
+});
+```
+
+Without `canApprove`, anyone who can answer in the session may approve — unlike eve's default for tools without a response policy, which allows only the requester.
+
 ## Tests
 
-`npm test` runs 62 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
+`npm test` runs 92 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
 
 ## Not affiliated with Lexware
 

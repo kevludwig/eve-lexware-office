@@ -16,6 +16,7 @@ import { vercelBlobStore } from "@kevludwig/lexware-office/vercel-blob";
 import type { ApprovalResponseContext, ApprovalResponseDecision } from "eve/tools/approval";
 
 import extension from "../extension";
+import { decideApproval } from "./approver";
 
 type Config = typeof extension.config;
 
@@ -58,8 +59,6 @@ export function renderReminder() {
  * eve asks it for Cancel as well as Approve — only someone allowed to approve
  * may withdraw a request someone else is waiting on.
  */
-export async function approverPolicy<T>({ response }: ApprovalResponseContext<T>): Promise<ApprovalResponseDecision> {
-  const canApprove = config().canApprove;
-  if (!canApprove || (await canApprove(response.principal))) return { status: "allowed" };
-  return { status: "rejected", reason: "Nur berechtigte Personen dürfen freigeben." };
+export async function approverPolicy<T>(context: ApprovalResponseContext<T>): Promise<ApprovalResponseDecision> {
+  return decideApproval(config().canApprove, context);
 }
