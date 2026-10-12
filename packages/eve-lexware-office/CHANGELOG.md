@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+### Breaking
+
+- Without `canApprove`, only the principal whose turn requested the call (`context.request.principal`) may approve or cancel a write, as in eve's default for tools without a response policy. Responder and requester are compared by `authenticator`, `issuer`, `principalType` and `principalId`. A call requested by an unauthenticated or anonymous caller stays open to any responder, as in eve. Before, anyone who could answer in the session could approve. To keep that, pass `canApprove: () => true`. An explicit `canApprove` replaces the default as before.
+
 ## 0.3.0
 
 ### Changed
