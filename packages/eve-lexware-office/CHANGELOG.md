@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+### Changed
+
+- Requires eve 0.77.0 or newer (peer `>=0.77.0`), built against it: eve 0.72 changed the tool capability extensions are built against.
+- `canApprove` receives eve's approval response context as a second argument: `(responder, context) => boolean | Promise<boolean>`. `context.session.initiator` lets a mount require that the approver owns the session; `context.request.principal` is whose turn requested the call, `context.response.decision` is approve or cancel. A `canApprove` that reads only the responder works as before.
+
 ## 0.2.0
 
 ### Added
