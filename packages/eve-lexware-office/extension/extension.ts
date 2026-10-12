@@ -40,7 +40,8 @@ export default defineExtension({
        * Who may approve a writing tool, or cancel it: `(responder, context)`.
        * `context` is eve's approval response context — e.g.
        * `context.session.initiator` to require that the approver owns the
-       * session. Default: anyone who may reach the session.
+       * session. Default, as in eve: only the principal whose turn
+       * requested the call. `() => true` lets anyone in the session answer.
        */
       canApprove: z.custom<CanApprove>(isFunction).optional(),
 

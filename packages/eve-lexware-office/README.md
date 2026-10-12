@@ -68,7 +68,7 @@ Between card and click, hours can pass, so every writing tool checks again immed
 | `baseUrl`, `appUrl` | the API and app URLs | Only for another environment. |
 | `storage.store` | Vercel Blob | Where journal, reminder records, and send claims live. Any `JsonStore`. |
 | `storage.prefix` | `lexware-office` | Key prefix inside the store. |
-| `canApprove` | anyone in the session | `(responder, context) => boolean` — who may approve a write or cancel it. See [Who may approve](#who-may-approve). |
+| `canApprove` | the requester only | `(responder, context) => boolean` — who may approve a write or cancel it. See [Who may approve](#who-may-approve). |
 | `onApprovalCard` | — | `(callId, card)` with the finished card: title, subtitle, facts, note, findings. For your own UI. |
 | `conversationUrl` | — | `(sessionId) => string`, for "waits in another conversation". |
 | `attachments` | — | A second source for an upload the sandbox lost: `{ read, size?, release? }`. |
@@ -107,11 +107,20 @@ export default lexware({
 });
 ```
 
-Without `canApprove`, anyone who can answer in the session may approve — unlike eve's default for tools without a response policy, which allows only the requester.
+Without `canApprove`, the extension follows eve's default for tools without a response policy: only the principal whose turn requested the call (`context.request.principal`) may approve or cancel it, compared by `authenticator`, `issuer`, `principalType` and `principalId`. A call requested by an unauthenticated or anonymous caller stays open to anyone who can answer in the session. A `canApprove` replaces this default entirely.
+
+To let anyone who can answer in the session approve, as before 0.4.0:
+
+```ts
+export default lexware({
+  // …
+  canApprove: () => true,
+});
+```
 
 ## Tests
 
-`npm test` runs 92 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
+`npm test` runs 98 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
 
 ## Not affiliated with Lexware
 

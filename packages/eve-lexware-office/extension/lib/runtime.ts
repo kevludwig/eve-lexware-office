@@ -55,7 +55,8 @@ export function renderReminder() {
 }
 
 /**
- * The response policy of every writing tool: the mount's canApprove, if any.
+ * The response policy of every writing tool: the mount's canApprove, or
+ * without it eve's default — only the requester may answer.
  * eve asks it for Cancel as well as Approve — only someone allowed to approve
  * may withdraw a request someone else is waiting on.
  */
