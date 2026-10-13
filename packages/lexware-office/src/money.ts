@@ -24,11 +24,16 @@ export function round2(value: number): number {
 export interface PricedLine {
   quantity: number;
   netPrice: number;
+  /** Discount on the line in percent. */
+  discountPercentage?: number;
 }
 
-/** Net total of line items, rounded to the cent. */
+/** Net amount of one line after its discount, unrounded. */
+export const lineNet = (line: PricedLine): number => line.quantity * line.netPrice * (1 - (line.discountPercentage ?? 0) / 100);
+
+/** Net total of line items after their discounts, rounded to the cent. */
 export function netTotal(lines: readonly PricedLine[]): number {
-  return round2(lines.reduce((sum, line) => sum + line.quantity * line.netPrice, 0));
+  return round2(lines.reduce((sum, line) => sum + lineNet(line), 0));
 }
 
 /** Tax contained in a gross amount. */

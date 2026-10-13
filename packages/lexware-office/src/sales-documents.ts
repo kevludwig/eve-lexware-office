@@ -4,7 +4,7 @@
  */
 
 import { LexwareApiError, query, type LexwareClient } from "./client.ts";
-import { DUPLICATE_TOTAL_TOLERANCE, round2 } from "./money.ts";
+import { DUPLICATE_TOTAL_TOLERANCE, netTotal, round2 } from "./money.ts";
 
 export type SalesDocumentKind = "quotation" | "order-confirmation" | "invoice";
 
@@ -17,13 +17,30 @@ export interface PricedLineItem {
   quantity: number;
   /** e.g. "Stück", "Stunde". */
   unit: string;
-  /** Net unit price in EUR. */
+  /**
+   * Net unit price in EUR. On a document with tax type `gross` the totals
+   * still count in net — derive it from `grossPrice` there.
+   */
   netPrice: number;
-  /** 0, 7, or 19. */
+  /** Gross unit price in EUR — sent instead of `netPrice` when the document's tax type is `gross`. */
+  grossPrice?: number;
+  /** See VALID_TAX_RATES; 0 on every vat-free tax type. */
   taxRate: number;
+  /** Discount on this line in percent, up to 2 decimals. */
+  discountPercentage?: number;
+  /**
+   * A product or service from the account's articles. The line still carries
+   * all its fields — they may deviate from the article, which stays as it is.
+   */
+  article?: { id: string; type: "service" | "material" };
   /** Quotations only: printed as "Optionale Position", not part of the total. */
   optional?: boolean;
+  /** Quotations only: alternatives offered instead of this line — printed under it, not part of the total. */
+  alternatives?: readonly AlternativeLineItem[];
 }
+
+/** An alternative to a priced line of a quotation: priced itself, never optional, without alternatives of its own. */
+export type AlternativeLineItem = Omit<PricedLineItem, "optional" | "alternatives">;
 
 /** A line without a price: a heading or a paragraph between positions. */
 export interface TextLineItem {
@@ -41,7 +58,82 @@ export const isPricedLine = (item: LineItem): item is PricedLineItem => item.typ
 export const countsToTotal = (item: LineItem): item is PricedLineItem => isPricedLine(item) && !item.optional;
 
 /** Lexware's limits for the texts of a sales document (FAQ "Texts in Sales Vouchers"). */
-export const SALES_TEXT_LIMITS = { introduction: 2000, remark: 2000, title: 25, lineItemName: 255, lineItemDescription: 2000 } as const;
+export const SALES_TEXT_LIMITS = { introduction: 2000, remark: 2000, deliveryTerms: 255, title: 25, lineItemName: 255, lineItemDescription: 2000 } as const;
+
+/**
+ * The tax rates Lexware Office accepts on German sales documents (cookbook
+ * "Rechnungen"). EU destination rates for distance sales come on top, with a
+ * `taxSubType` only.
+ */
+export const VALID_TAX_RATES = [0, 5, 7, 16, 19] as const;
+
+/** How the document is taxed. Every type but `net` and `gross` needs a referenced contact and 0 % on every line. */
+export type SalesTaxType =
+  | "net"
+  | "gross"
+  | "vatfree"
+  | "intraCommunitySupply"
+  | "constructionService13b"
+  | "externalService13b"
+  | "thirdPartyCountryService"
+  | "thirdPartyCountryDelivery"
+  | "photovoltaicEquipment";
+
+export const SALES_TAX_TYPES: readonly SalesTaxType[] = [
+  "net",
+  "gross",
+  "vatfree",
+  "intraCommunitySupply",
+  "constructionService13b",
+  "externalService13b",
+  "thirdPartyCountryService",
+  "thirdPartyCountryDelivery",
+  "photovoltaicEquipment",
+];
+
+/** Whether a tax type charges no VAT — then every line must carry 0 %. */
+export const isVatFreeTaxType = (type: SalesTaxType): boolean => type !== "net" && type !== "gross";
+
+export interface TaxConditions {
+  taxType: SalesTaxType;
+  /** B2C in the EU with `net` or `gross` only. */
+  taxSubType?: "distanceSales" | "electronicServices";
+  /** The printed note on a vat-free type; the account's default when absent. */
+  taxTypeNote?: string;
+}
+
+export interface PaymentConditions {
+  /** The printed text, e.g. „Zahlbar innerhalb von 14 Tagen ohne Abzug". */
+  paymentTermLabel?: string;
+  /** Days until payment is due. */
+  paymentTermDuration?: number;
+  /** Cash discount for payment within `discountRange` days. */
+  paymentDiscountConditions?: { discountPercentage: number; discountRange: number };
+}
+
+/**
+ * When the goods or the service are supplied — the date § 14 (4) No. 6 UStG
+ * asks of an invoice. `none` prints no date. The tax rates valid at
+ * `shippingDate` (a period: `shippingEndDate`) apply.
+ */
+export type ShippingConditions =
+  | { shippingType: "service" | "delivery"; shippingDate: string }
+  | { shippingType: "serviceperiod" | "deliveryperiod"; shippingDate: string; shippingEndDate: string }
+  | { shippingType: "none" };
+
+export type SalesLanguage = "de" | "en";
+
+/**
+ * The text Lexware Office prints for a payment term, in its own wording:
+ * „Zahlbar sofort, rein netto", „Zahlbar innerhalb von 14 Tagen ohne Abzug",
+ * „10 Tage 2 % Skonto, 30 Tage netto".
+ */
+export function paymentTermLabel(days: number, discount?: { percentage: number; days: number }): string {
+  if (discount) {
+    return `${discount.days} Tage ${discount.percentage.toLocaleString("de-DE", { maximumFractionDigits: 2 })} % Skonto, ${days} Tage netto`;
+  }
+  return days === 0 ? "Zahlbar sofort, rein netto" : `Zahlbar innerhalb von ${days} ${days === 1 ? "Tag" : "Tagen"} ohne Abzug`;
+}
 
 const ENDPOINTS: Record<SalesDocumentKind, string> = {
   quotation: "/quotations",
@@ -72,51 +164,81 @@ export interface CreatedSalesDocument {
   url: string;
 }
 
+/** What a sales document is created with. Everything optional falls back to Lexware Office's defaults. */
+export interface NewSalesDocument {
+  kind: SalesDocumentKind;
+  contactId: string;
+  items: readonly LineItem[];
+  /** yyyy-MM-dd or a timestamp. Default: now. */
+  voucherDate?: string;
+  /** Replaces the printed heading; Lexware's default when absent. Max. 25 characters. */
+  title?: string;
+  /** Quotations: valid until, yyyy-MM-dd or a timestamp. */
+  expirationDate?: string;
+  finalize?: boolean;
+  /** Total discount in EUR. Not together with `totalDiscountPercentage`. */
+  totalDiscountAbsolute?: number;
+  /** Total discount in percent of the net (or, on `gross`, the gross) total. Without either, a contact's default discount applies. */
+  totalDiscountPercentage?: number;
+  /** Default: `{ taxType: "net" }`. */
+  taxConditions?: TaxConditions;
+  /** Without them, Lexware takes the contact's payment term, else the account's default. */
+  paymentConditions?: PaymentConditions;
+  /**
+   * Order confirmations and invoices only — quotations have none. Default:
+   * delivery on the voucher date, which is what Lexware prints then.
+   */
+  shippingConditions?: ShippingConditions;
+  /** Print language and language of the default texts. Default: de. */
+  language?: SalesLanguage;
+  /** A print layout from listPrintLayouts; the account's default when absent. */
+  printLayoutId?: string;
+  /** Order confirmations only. Max. 255 characters; the contact's or account's default when absent. */
+  deliveryTerms?: string;
+  /** Invoices to an XRechnung contact: the Leitweg-ID, overriding the contact's. An empty string makes a standard invoice. */
+  xRechnung?: { buyerReference: string };
+  precedingSalesVoucherId?: string;
+  /** Opening text; Markdown. Max. 2000 characters. */
+  introduction?: string;
+  /** Closing text; Markdown. Max. 2000 characters. */
+  remark?: string;
+}
+
 /**
  * Creates a sales document. `finalize` gives it a number right away — it can
- * then no longer be deleted like a draft. `introduction` and `remark` replace
- * the default texts of the account's settings — left out, the defaults stay.
- * Only quotations know optional lines; on other kinds this throws instead of
- * the API dropping the flag and counting the line.
+ * then no longer be deleted like a draft. Texts, payment conditions, delivery
+ * terms, print layout and total discount left out take the account's (or the
+ * contact's) defaults. Combinations the API documents for another kind only —
+ * optional lines outside a quotation, shipping conditions on one, … — throw
+ * instead of reaching the API, which would drop or reject them.
  *
  * `precedingSalesVoucherId` links the document to its predecessor (a pursued
  * quotation becomes accepted) — only as a query parameter; in the body the API
  * drops it silently. The content is not copied: this payload alone decides
  * the new document. An invalid pursue answers 406, see isPursueRejection.
  */
-export async function createSalesDocument(
-  client: LexwareClient,
-  options: {
-    kind: SalesDocumentKind;
-    contactId: string;
-    items: readonly LineItem[];
-    /** Replaces the printed heading; Lexware's default when absent. Max. 25 characters. */
-    title?: string;
-    /** Quotations: valid until, yyyy-MM-dd or a timestamp. */
-    expirationDate?: string;
-    finalize?: boolean;
-    /** Total discount in EUR on the net amount. */
-    totalDiscountAbsolute?: number;
-    precedingSalesVoucherId?: string;
-    /** Opening text; Markdown. Max. 2000 characters. */
-    introduction?: string;
-    /** Closing text; Markdown. Max. 2000 characters. */
-    remark?: string;
-  },
-  signal?: AbortSignal,
-): Promise<CreatedSalesDocument> {
-  if (options.kind !== "quotation" && options.items.some((item) => isPricedLine(item) && item.optional)) {
-    throw new Error(`Optional line items exist only on quotations, not on ${options.kind}`);
-  }
-  const voucherDate = new Date().toISOString().replace("Z", "+00:00");
-  const discount = options.totalDiscountAbsolute ?? 0;
+export async function createSalesDocument(client: LexwareClient, options: NewSalesDocument, signal?: AbortSignal): Promise<CreatedSalesDocument> {
+  assertValidSalesDocument(options);
+  const voucherDate = options.voucherDate ? toIsoDateTime(options.voucherDate) : new Date().toISOString().replace("Z", "+00:00");
+  const taxConditions = options.taxConditions ?? { taxType: "net" as const };
+  const gross = taxConditions.taxType === "gross";
+  const totalPrice = {
+    currency: "EUR",
+    ...((options.totalDiscountAbsolute ?? 0) > 0 ? { totalDiscountAbsolute: round2(options.totalDiscountAbsolute!) } : {}),
+    ...((options.totalDiscountPercentage ?? 0) > 0 ? { totalDiscountPercentage: round2(options.totalDiscountPercentage!) } : {}),
+  };
   const payload: Record<string, unknown> = {
     voucherDate,
     address: { contactId: options.contactId },
-    lineItems: options.items.map(toApiLine),
-    totalPrice: { currency: "EUR", ...(discount > 0 ? { totalDiscountAbsolute: round2(discount) } : {}) },
-    taxConditions: { taxType: "net" },
-    shippingConditions: { shippingType: "delivery", shippingDate: voucherDate },
+    lineItems: options.items.map((item) => toApiLine(item, gross)),
+    totalPrice,
+    taxConditions,
+    ...(options.kind === "quotation" ? {} : { shippingConditions: toApiShipping(options.shippingConditions, voucherDate) }),
+    ...(options.paymentConditions ? { paymentConditions: options.paymentConditions } : {}),
+    ...(options.language ? { language: options.language } : {}),
+    ...(options.printLayoutId ? { printLayoutId: options.printLayoutId } : {}),
+    ...(options.deliveryTerms ? { deliveryTerms: options.deliveryTerms } : {}),
+    ...(options.xRechnung ? { xRechnung: options.xRechnung } : {}),
     ...(options.title ? { title: options.title } : {}),
     ...(options.expirationDate ? { expirationDate: toIsoDateTime(options.expirationDate) } : {}),
     ...(options.introduction ? { introduction: options.introduction } : {}),
@@ -131,17 +253,81 @@ export async function createSalesDocument(
   return { id: result.id, resourceUri: result.resourceUri, url: client.voucherUrl(result.id) };
 }
 
-function toApiLine(item: LineItem): Record<string, unknown> {
+/** The checks createSalesDocument runs before sending — exported so a caller can run them before an approval. */
+export function salesDocumentProblems(options: NewSalesDocument): string[] {
+  const problems: string[] = [];
+  const { kind } = options;
+  const priced = options.items.filter(isPricedLine);
+  const lines = priced.flatMap((item) => [item, ...(item.alternatives ?? [])]);
+  const taxType = options.taxConditions?.taxType ?? "net";
+
+  if (kind !== "quotation" && priced.some((item) => item.optional)) problems.push(`Optional line items exist only on quotations, not on ${kind}`);
+  if (kind !== "quotation" && priced.some((item) => (item.alternatives?.length ?? 0) > 0)) problems.push(`Alternative line items exist only on quotations, not on ${kind}`);
+  if (priced.some((item) => item.optional && (item.alternatives?.length ?? 0) > 0)) problems.push("An optional line item cannot have alternatives");
+  if (kind === "quotation" && options.shippingConditions) problems.push("Quotations have no shipping conditions");
+  if (kind !== "order-confirmation" && options.deliveryTerms) problems.push(`Delivery terms exist only on order confirmations, not on ${kind}`);
+  if (kind !== "invoice" && options.xRechnung) problems.push(`XRechnung properties exist only on invoices, not on ${kind}`);
+  if (kind !== "quotation" && options.expirationDate) problems.push(`An expiration date exists only on quotations, not on ${kind}`);
+  if ((options.deliveryTerms?.length ?? 0) > SALES_TEXT_LIMITS.deliveryTerms) problems.push(`Delivery terms longer than ${SALES_TEXT_LIMITS.deliveryTerms} characters`);
+  if ((options.totalDiscountAbsolute ?? 0) > 0 && (options.totalDiscountPercentage ?? 0) > 0) problems.push("Either an absolute or a percentage total discount, not both");
+  if ((options.totalDiscountPercentage ?? 0) > 100) problems.push("A total discount above 100 %");
+
+  if (isVatFreeTaxType(taxType) && lines.some((item) => item.taxRate !== 0)) problems.push(`Tax type ${taxType} needs 0 % on every line`);
+  if (options.taxConditions?.taxSubType && isVatFreeTaxType(taxType)) problems.push("A tax subtype goes with net or gross only");
+  if (!options.taxConditions?.taxSubType && lines.some((item) => !(VALID_TAX_RATES as readonly number[]).includes(item.taxRate))) {
+    problems.push(`Tax rates other than ${VALID_TAX_RATES.join(", ")} % need a tax subtype (EU distance sales)`);
+  }
+  if (taxType === "gross" && lines.some((item) => item.grossPrice === undefined)) problems.push("Tax type gross needs a gross price on every priced line");
+  if (lines.some((item) => (item.discountPercentage ?? 0) < 0 || (item.discountPercentage ?? 0) > 100)) problems.push("A line discount outside 0–100 %");
+
+  const shipping = options.shippingConditions;
+  if (shipping && shipping.shippingType !== "none") {
+    if (!isDate(shipping.shippingDate)) problems.push(`Shipping date ${shipping.shippingDate} is no date`);
+    if ("shippingEndDate" in shipping) {
+      if (!isDate(shipping.shippingEndDate)) problems.push(`Shipping end date ${shipping.shippingEndDate} is no date`);
+      else if (dayOf(shipping.shippingEndDate) < dayOf(shipping.shippingDate)) problems.push("The shipping period ends before it starts");
+    }
+  }
+  const payment = options.paymentConditions;
+  if (payment?.paymentDiscountConditions && payment.paymentTermDuration !== undefined && payment.paymentDiscountConditions.discountRange > payment.paymentTermDuration) {
+    problems.push("The cash discount runs longer than the payment term");
+  }
+  return problems;
+}
+
+function assertValidSalesDocument(options: NewSalesDocument): void {
+  const problems = salesDocumentProblems(options);
+  if (problems.length > 0) throw new Error(problems.join("; "));
+}
+
+const isDate = (value: string) => !Number.isNaN(new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00Z` : value).getTime());
+const dayOf = (value: string) => value.slice(0, 10);
+
+function toApiShipping(shipping: ShippingConditions | undefined, voucherDate: string): Record<string, unknown> {
+  if (!shipping) return { shippingType: "delivery", shippingDate: voucherDate };
+  if (shipping.shippingType === "none") return { shippingType: "none" };
+  return {
+    shippingType: shipping.shippingType,
+    shippingDate: toIsoDateTime(shipping.shippingDate),
+    ...("shippingEndDate" in shipping ? { shippingEndDate: toIsoDateTime(shipping.shippingEndDate) } : {}),
+  };
+}
+
+function toApiLine(item: LineItem, gross: boolean): Record<string, unknown> {
   const description = item.description ? { description: item.description } : {};
   if (!isPricedLine(item)) return { type: "text", name: item.name, ...description };
   return {
-    type: "custom",
+    ...(item.article ? { id: item.article.id, type: item.article.type } : { type: "custom" }),
     name: item.name,
     ...description,
     quantity: item.quantity,
     unitName: item.unit,
-    unitPrice: { currency: "EUR", netAmount: item.netPrice, taxRatePercentage: item.taxRate },
+    unitPrice: gross
+      ? { currency: "EUR", grossAmount: item.grossPrice, taxRatePercentage: item.taxRate }
+      : { currency: "EUR", netAmount: item.netPrice, taxRatePercentage: item.taxRate },
+    ...((item.discountPercentage ?? 0) > 0 ? { discountPercentage: item.discountPercentage } : {}),
     ...(item.optional ? { optional: true } : {}),
+    ...(item.alternatives?.length ? { subItems: item.alternatives.map((alternative) => ({ ...toApiLine(alternative, gross), alternative: true })) } : {}),
   };
 }
 
@@ -199,6 +385,7 @@ export async function getSalesDocument(client: LexwareClient, kind: SalesDocumen
       quantity?: number;
       unitName?: string;
       unitPrice?: { netAmount?: number; taxRatePercentage?: number };
+      discountPercentage?: number;
       optional?: boolean;
       subItems?: unknown[];
     }>;
@@ -216,6 +403,7 @@ export async function getSalesDocument(client: LexwareClient, kind: SalesDocumen
         unit: item.unitName ?? "Stück",
         netPrice: item.unitPrice?.netAmount ?? 0,
         taxRate: item.unitPrice?.taxRatePercentage ?? 19,
+        ...(item.discountPercentage ? { discountPercentage: item.discountPercentage } : {}),
         ...(item.optional ? { optional: true } : {}),
       }),
     );
@@ -227,7 +415,7 @@ export async function getSalesDocument(client: LexwareClient, kind: SalesDocumen
     voucherStatus: raw.voucherStatus,
     contactId: raw.address?.contactId,
     contactName: raw.address?.name,
-    lineItemsNet: items.length === 0 ? Number.NaN : round2(items.reduce((sum, item) => sum + item.quantity * item.netPrice, 0)),
+    lineItemsNet: items.length === 0 ? Number.NaN : netTotal(items),
     lineItems: items,
     optionalItems: priced.filter((item) => item.optional),
     hasOptionalOrAlternative: lines.some((item) => item.optional === true || (item.subItems?.length ?? 0) > 0),

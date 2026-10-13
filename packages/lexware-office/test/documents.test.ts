@@ -8,8 +8,14 @@ import {
   findDuplicateSalesDocument,
   findPurchaseInvoiceByNumber,
   findVendorCategoryHistory,
+  defaultPaymentCondition,
+  getArticle,
+  getContact,
   getSalesDocument,
   invoiceExists,
+  paymentTermLabel,
+  resolvePrintLayout,
+  salesDocumentProblems,
   isPursueRejection,
   isReverseChargeCategory,
   listPostingCategories,
@@ -162,6 +168,134 @@ describe("sales documents", () => {
       /only on quotations/,
     );
     assert.equal(calls.length, 0);
+  });
+
+  it("sends service period, payment term, voucher date, discounts and tax conditions of an invoice", async () => {
+    const { client, calls } = fakeApi(on("POST", /^\/invoices$/, () => ({ id: "i1" })));
+    await createSalesDocument(client, {
+      kind: "invoice",
+      contactId: "c1",
+      items: [{ name: "Entwicklung", quantity: 10, unit: "Stunde", netPrice: 100, taxRate: 19, discountPercentage: 10 }],
+      voucherDate: "2026-10-13",
+      shippingConditions: { shippingType: "serviceperiod", shippingDate: "2026-09-16", shippingEndDate: "2026-09-30" },
+      paymentConditions: { paymentTermLabel: paymentTermLabel(14), paymentTermDuration: 14 },
+      totalDiscountPercentage: 5,
+      title: "Beispiel Apps",
+      language: "de",
+      printLayoutId: "pl-1",
+      xRechnung: { buyerReference: "" },
+    });
+    const body = calls[0]!.body as Record<string, any>;
+    assert.equal(body.voucherDate, "2026-10-13T00:00:00.000+02:00");
+    assert.deepEqual(body.shippingConditions, {
+      shippingType: "serviceperiod",
+      shippingDate: "2026-09-16T00:00:00.000+02:00",
+      shippingEndDate: "2026-09-30T00:00:00.000+02:00",
+    });
+    assert.deepEqual(body.paymentConditions, { paymentTermLabel: "Zahlbar innerhalb von 14 Tagen ohne Abzug", paymentTermDuration: 14 });
+    assert.deepEqual(body.taxConditions, { taxType: "net" });
+    assert.deepEqual(body.totalPrice, { currency: "EUR", totalDiscountPercentage: 5 });
+    assert.equal(body.lineItems[0].discountPercentage, 10);
+    assert.equal(body.title, "Beispiel Apps");
+    assert.equal(body.language, "de");
+    assert.equal(body.printLayoutId, "pl-1");
+    assert.deepEqual(body.xRechnung, { buyerReference: "" });
+  });
+
+  it("keeps the old default — delivery on the voucher date — and leaves payment conditions to Lexware", async () => {
+    const { client, calls } = fakeApi(on("POST", /^\/order-confirmations$/, () => ({ id: "o1" })));
+    await createSalesDocument(client, { kind: "order-confirmation", contactId: "c1", items: [{ type: "text", name: "Teil 1" }], deliveryTerms: "Lieferung frei Haus" });
+    const body = calls[0]!.body as Record<string, any>;
+    assert.equal(body.shippingConditions.shippingType, "delivery");
+    assert.equal(body.shippingConditions.shippingDate, body.voucherDate);
+    assert.equal("paymentConditions" in body, false);
+    assert.equal(body.deliveryTerms, "Lieferung frei Haus");
+  });
+
+  it("sends a quotation without shipping conditions, with alternatives, article references and gross prices", async () => {
+    const { client, calls } = fakeApi(on("POST", /^\/quotations$/, () => ({ id: "q1" })));
+    await createSalesDocument(client, {
+      kind: "quotation",
+      contactId: "c1",
+      taxConditions: { taxType: "gross" },
+      paymentConditions: { paymentTermLabel: paymentTermLabel(30, { percentage: 2, days: 10 }), paymentTermDuration: 30, paymentDiscountConditions: { discountPercentage: 2, discountRange: 10 } },
+      items: [
+        {
+          name: "Hosting S",
+          quantity: 12,
+          unit: "Monat",
+          netPrice: 25.2101,
+          grossPrice: 30,
+          taxRate: 19,
+          article: { id: "a1", type: "service" },
+          alternatives: [{ name: "Hosting M", quantity: 12, unit: "Monat", netPrice: 42.0168, grossPrice: 50, taxRate: 19 }],
+        },
+      ],
+    });
+    const body = calls[0]!.body as Record<string, any>;
+    assert.equal("shippingConditions" in body, false);
+    assert.deepEqual(body.taxConditions, { taxType: "gross" });
+    assert.equal(body.paymentConditions.paymentTermLabel, "10 Tage 2 % Skonto, 30 Tage netto");
+    assert.deepEqual(body.lineItems[0].unitPrice, { currency: "EUR", grossAmount: 30, taxRatePercentage: 19 });
+    assert.equal(body.lineItems[0].id, "a1");
+    assert.equal(body.lineItems[0].type, "service");
+    assert.equal(body.lineItems[0].subItems[0].alternative, true);
+    assert.equal(body.lineItems[0].subItems[0].type, "custom");
+    assert.equal(body.lineItems[0].subItems[0].unitPrice.grossAmount, 50);
+  });
+
+  it("names every combination the API would drop or reject, before sending", async () => {
+    const line = { name: "A", quantity: 1, unit: "Stück", netPrice: 1, taxRate: 19 };
+    const problems = (options: Record<string, unknown>) => salesDocumentProblems({ kind: "invoice", contactId: "c1", items: [line], ...options } as never);
+
+    assert.deepEqual(problems({}), []);
+    assert.match(problems({ kind: "quotation", shippingConditions: { shippingType: "none" } }).join(), /no shipping conditions/);
+    assert.match(problems({ deliveryTerms: "frei Haus" }).join(), /only on order confirmations/);
+    assert.match(problems({ kind: "quotation", xRechnung: { buyerReference: "x" } }).join(), /only on invoices/);
+    assert.match(problems({ shippingConditions: { shippingType: "serviceperiod", shippingDate: "2026-09-30", shippingEndDate: "2026-09-16" } }).join(), /ends before it starts/);
+    assert.match(problems({ taxConditions: { taxType: "intraCommunitySupply" } }).join(), /0 % on every line/);
+    assert.deepEqual(problems({ taxConditions: { taxType: "intraCommunitySupply" }, items: [{ ...line, taxRate: 0 }] }), []);
+    assert.match(problems({ taxConditions: { taxType: "gross" } }).join(), /gross price/);
+    assert.match(problems({ items: [{ ...line, taxRate: 21 }] }).join(), /tax subtype/);
+    assert.deepEqual(problems({ items: [{ ...line, taxRate: 21 }], taxConditions: { taxType: "net", taxSubType: "distanceSales" } }), []);
+    assert.match(problems({ totalDiscountAbsolute: 10, totalDiscountPercentage: 5 }).join(), /not both/);
+    assert.match(problems({ items: [{ ...line, alternatives: [line] }] }).join(), /Alternative line items exist only on quotations/);
+    assert.match(problems({ paymentConditions: { paymentTermDuration: 7, paymentDiscountConditions: { discountPercentage: 2, discountRange: 10 } } }).join(), /runs longer/);
+  });
+
+  it("reads the account's default payment term, print layouts, articles and a contact's tax data", async () => {
+    const { client } = fakeApi(
+      on("GET", /^\/payment-conditions$/, () => [
+        { id: "p1", paymentTermLabelTemplate: "Zahlbar in {paymentRange} Tagen, rein netto ohne Abzug", paymentTermDuration: 14, organizationDefault: false },
+        { id: "p2", paymentTermLabelTemplate: "{discountRange} Tage -{discount}, {paymentRange} Tage netto", paymentTermDuration: 30, paymentDiscountConditions: { discountPercentage: 3, discountRange: 10 }, organizationDefault: true },
+      ]),
+      on("GET", /^\/print-layouts$/, () => [
+        { id: "l1", name: "Standard", default: true },
+        { id: "l2", name: "Englisch", default: false },
+      ]),
+      on("GET", /^\/articles\/a1$/, () => ({ id: "a1", title: "Hosting", type: "PRODUCT", unitName: "Monat", price: { netPrice: 25, taxRate: 19 } })),
+      on("GET", /^\/contacts\/c1$/, () => ({
+        id: "c1",
+        roles: { customer: { number: 10001 } },
+        company: { name: "Acme BV", vatRegistrationId: "NL123456789B01", allowTaxFreeInvoices: true },
+        addresses: { billing: [{ countryCode: "NL" }] },
+      })),
+    );
+    assert.deepEqual(await defaultPaymentCondition(client), { label: "10 Tage -3 %, 30 Tage netto", duration: 30, discount: { percentage: 3, days: 10 } });
+    assert.equal((await resolvePrintLayout(client, "englisch"))?.id, "l2");
+    assert.equal(await resolvePrintLayout(client, "Fehlt"), null);
+    assert.equal((await getArticle(client, "a1")).lineType, "material");
+    const contact = await getContact(client, "c1");
+    assert.equal(contact.vatRegistrationId, "NL123456789B01");
+    assert.equal(contact.allowTaxFreeInvoices, true);
+    assert.equal(contact.countryCode, "NL");
+    assert.equal(contact.isCompany, true);
+  });
+
+  it("phrases a payment term as Lexware Office does", () => {
+    assert.equal(paymentTermLabel(0), "Zahlbar sofort, rein netto");
+    assert.equal(paymentTermLabel(14), "Zahlbar innerhalb von 14 Tagen ohne Abzug");
+    assert.equal(paymentTermLabel(30, { percentage: 2.5, days: 10 }), "10 Tage 2,5 % Skonto, 30 Tage netto");
   });
 
   it("recognises a rejected pursue", () => {

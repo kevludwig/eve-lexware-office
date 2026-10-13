@@ -16,12 +16,21 @@ export interface Contact {
   number?: number;
   isCustomer: boolean;
   isVendor: boolean;
+  /** A company rather than a person. */
+  isCompany?: boolean;
+  /** The company's VAT ID (USt-IdNr.) — needed for the § 13b and intra-community tax types. */
+  vatRegistrationId?: string;
+  /** „Steuerfreie Rechnung erlauben" — needed for the third-country tax types. */
+  allowTaxFreeInvoices?: boolean;
+  /** ISO code of the first billing address. */
+  countryCode?: string;
 }
 
 interface RawContact {
   id: string;
   roles?: { customer?: { number?: number }; vendor?: { number?: number } };
-  company?: { name?: string };
+  company?: { name?: string; vatRegistrationId?: string; allowTaxFreeInvoices?: boolean };
+  addresses?: { billing?: { countryCode?: string }[] };
   person?: { firstName?: string; lastName?: string };
   emailAddresses?: { business?: string[]; office?: string[]; private?: string[]; other?: string[] };
 }
@@ -41,6 +50,10 @@ function toContact(raw: RawContact): Contact {
     number: raw.roles?.customer?.number ?? raw.roles?.vendor?.number,
     isCustomer: raw.roles?.customer !== undefined,
     isVendor: raw.roles?.vendor !== undefined,
+    isCompany: raw.company !== undefined,
+    ...(raw.company?.vatRegistrationId?.trim() ? { vatRegistrationId: raw.company.vatRegistrationId.trim() } : {}),
+    ...(raw.company?.allowTaxFreeInvoices !== undefined ? { allowTaxFreeInvoices: raw.company.allowTaxFreeInvoices } : {}),
+    ...(raw.addresses?.billing?.[0]?.countryCode ? { countryCode: raw.addresses.billing[0].countryCode } : {}),
   };
 }
 
