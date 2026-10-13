@@ -199,3 +199,84 @@ describe("approvalCard", () => {
     assert.equal(factOf(card, "Anhang"), "RE20260042.pdf");
   });
 });
+
+describe("sales card: dates, payment, tax, discounts", () => {
+  /** An invoice with a service period in September, 14 days net. */
+  const order = {
+    customer_number: 10042,
+    items: [{ name: "Beratung", quantity: 1, unit: "Pauschale", net_price: 1200, tax_rate: 19 }],
+    voucher_date: "2026-10-13",
+    service_period: { from: "2026-09-16", to: "2026-09-30" },
+    payment_term_days: 14,
+  };
+
+  it("shows service period, payment term with due date, and tax type of an invoice", (t) => {
+    const card = approvalCard("lexware__create_invoice", "call", order)!;
+
+    assert.equal(factOf(card, "Leistungszeitraum"), "16.9.2026 – 30.9.2026");
+    assert.equal(factOf(card, "Zahlungsziel"), "Zahlbar innerhalb von 14 Tagen ohne Abzug · fällig 27.10.2026");
+    assert.equal(factOf(card, "Steuerart"), "Netto (USt. ausgewiesen)");
+    assert.equal(factOf(card, "Belegdatum"), "13.10.2026");
+    t.assert.snapshot(card);
+  });
+
+  it("says what Lexware prints when date and payment term are missing", () => {
+    const card = approvalCard("lexware__create_invoice", "call", { customer_number: 10042, items: order.items })!;
+
+    assert.equal(factOf(card, "Leistungsdatum"), "nicht angegeben — Lexware Office druckt „Lieferdatum = Belegdatum“");
+    assert.equal(factOf(card, "Zahlungsziel"), "nicht angegeben — Vorgabe aus Lexware Office (siehe Befunde)");
+  });
+
+  it("shows a quotation's discounts, gross prices, alternatives, language and layout", (t) => {
+    const card = approvalCard("lexware__create_quotation", "call", {
+      customer_number: 10001,
+      voucher_date: "2026-10-13",
+      tax_type: "gross",
+      items: [
+        {
+          name: "Hosting S",
+          quantity: 12,
+          unit: "Monat",
+          gross_price: 29.75,
+          tax_rate: 19,
+          discount_percent: 10,
+          alternatives: [{ name: "Hosting M", quantity: 12, unit: "Monat", gross_price: 59.5, tax_rate: 19 }],
+        },
+      ],
+      total_discount_percent: 5,
+      payment_term_days: 30,
+      cash_discount: { percent: 2, days: 10 },
+      language: "en",
+      print_layout: "Englisch",
+    })!;
+
+    assert.equal(factOf(card, "Netto"), "256,50 EUR");
+    assert.equal(factOf(card, "Brutto"), "305,24 EUR");
+    assert.equal(factOf(card, "Rabatt"), "5 % auf die Summe (−13,50 EUR netto, vor Rabatt 270,00 EUR)");
+    assert.equal(factOf(card, "1. Hosting S"), "12 Monat × 29,75 EUR brutto − 10 %");
+    assert.equal(factOf(card, "Alternative zu 1. Hosting M"), "12 Monat × 59,50 EUR brutto · nicht in der Summe");
+    assert.equal(factOf(card, "Zahlungsziel"), "10 Tage 2 % Skonto, 30 Tage netto");
+    assert.equal(factOf(card, "Gültig bis"), "12.11.2026 (Standard)");
+    assert.equal(factOf(card, "Leistungsdatum"), undefined);
+    t.assert.snapshot(card);
+  });
+
+  it("shows reverse charge with its note, delivery terms and the Leitweg-ID", () => {
+    const confirmation = approvalCard("lexware__create_order_confirmation", "call", {
+      customer_number: 10001,
+      items: [{ ...items[0], tax_rate: 0 }],
+      tax_type: "externalService13b",
+      tax_note: "Steuerschuldnerschaft des Leistungsempfängers",
+      delivery_period: { from: "2026-11-02", to: "2026-11-06" },
+      delivery_terms: "Lieferung frei Haus",
+    })!;
+    assert.equal(factOf(confirmation, "Steuerart"), "Fremdleistung EU (§ 13b UStG) · Hinweis: Steuerschuldnerschaft des Leistungsempfängers");
+    assert.equal(factOf(confirmation, "Lieferzeitraum"), "2.11.2026 – 6.11.2026");
+    assert.equal(factOf(confirmation, "Lieferbedingungen"), "Lieferung frei Haus");
+    assert.equal(factOf(confirmation, "Brutto"), factOf(confirmation, "Netto"));
+
+    const invoice = approvalCard("lexware__create_invoice", "call", { customer_number: 10001, items, buyer_reference: "", no_service_date: true })!;
+    assert.equal(factOf(invoice, "Leitweg-ID"), "keine (normale Rechnung statt XRechnung)");
+    assert.equal(factOf(invoice, "Leistungsdatum"), "keins (wird nicht gedruckt)");
+  });
+});

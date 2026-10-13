@@ -1,6 +1,6 @@
 {
   "name": "@kevludwig/eve-lexware-office",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "eve": {
     "extension": {
@@ -26,7 +26,8 @@
     "prepare": "eve extension build",
     "typecheck": "tsc",
     "pretest": "eve extension build",
-    "test": "node --test --experimental-test-module-mocks test/*.test.ts"
+    "test": "node --test --experimental-test-module-mocks test/*.test.ts",
+    "test:update-snapshots": "eve extension build && node --test --experimental-test-module-mocks --test-update-snapshots test/*.test.ts"
   },
   "dependencies": {
     "@kevludwig/lexware-office": "workspace:*",

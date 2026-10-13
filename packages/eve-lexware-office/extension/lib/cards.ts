@@ -3,11 +3,11 @@
  * input and the findings its approval stored. Channels only render them.
  */
 
-import { countsToTotal, daysSince, isPricedLine, netTotal, round2, type LineItem, type PricedLineItem } from "@kevludwig/lexware-office";
+import { countsToTotal, daysSince, isPricedLine, isVatFreeTaxType, lineNet, netTotal, round2, type LineItem, type PricedLineItem } from "@kevludwig/lexware-office";
 
 import { eur, shortDate } from "./format";
 import { purchaseCard } from "./purchase-card";
-import { toLineItems, totalOf, type SalesInput } from "./sales";
+import { TAX_TYPE_LABEL, berlinToday, paymentOf, shippingOf, toLineItems, validUntilOf, type SalesInput } from "./sales";
 import { findingsOf } from "./findings";
 import type { ApprovalCard } from "./types";
 
@@ -57,16 +57,23 @@ function lineFacts(items: readonly LineItem[], budget: number): { title: string;
     return candidate;
   };
   let number = 0;
+  const priceOf = (item: Omit<PricedLineItem, "alternatives">) =>
+    `${quantity(item.quantity)} ${item.unit} × ${item.grossPrice !== undefined ? `${eur(item.grossPrice)} brutto` : eur(item.netPrice)}` +
+    (item.discountPercentage ? ` − ${quantity(item.discountPercentage)} %` : "");
   const describe = (item: LineItem, prefix = "") => {
-    if (!isPricedLine(item)) return { title: unique(`▸ ${cut(item.name, NAME_PREVIEW)}`), value: preview(item.description) || "Zwischenüberschrift" };
+    if (!isPricedLine(item)) return [{ title: unique(`▸ ${cut(item.name, NAME_PREVIEW)}`), value: preview(item.description) || "Zwischenüberschrift" }];
     number++;
-    const price = `${quantity(item.quantity)} ${item.unit} × ${eur(item.netPrice)}`;
     const about = preview(item.description);
-    return { title: unique(`${prefix}${number}. ${cut(item.name, NAME_PREVIEW)}`), value: about ? `${price} · ${about}` : price };
+    const own = { title: unique(`${prefix}${number}. ${cut(item.name, NAME_PREVIEW)}`), value: about ? `${priceOf(item)} · ${about}` : priceOf(item) };
+    const alternatives = (item.alternatives ?? []).map((alternative) => ({
+      title: unique(`Alternative zu ${number}. ${cut(alternative.name, NAME_PREVIEW)}`),
+      value: `${priceOf(alternative)} · nicht in der Summe`,
+    }));
+    return [own, ...alternatives];
   };
   const all = [
-    ...items.filter((item) => !isPricedLine(item) || !item.optional).map((item) => describe(item)),
-    ...items.filter((item) => isPricedLine(item) && item.optional).map((item) => describe(item, "Optional ")),
+    ...items.filter((item) => !isPricedLine(item) || !item.optional).flatMap((item) => describe(item)),
+    ...items.filter((item) => isPricedLine(item) && item.optional).flatMap((item) => describe(item, "Optional ")),
   ];
   const shown: { title: string; value: string }[] = [];
   for (const fact of all) {
@@ -77,12 +84,65 @@ function lineFacts(items: readonly LineItem[], budget: number): { title: string;
   return rest > 0 ? [...shown, { title: "…", value: `${rest} weitere ${rest === 1 ? "Zeile" : "Zeilen"}, vollständig in Lexware Office` }] : shown;
 }
 
-/** The facts every sales document shows: customer as given, totals, texts, what it derives from, then the positions. */
-function salesFacts(input: SalesInput & { quotation_id?: string }, budget: number) {
+/**
+ * Net and gross of the lines that count, after line and total discounts. On
+ * a gross document the gross prices lead and the net follows from them.
+ */
+export function salesTotals(input: SalesInput): { linesNet: number; discount: number; net: number; gross: number } {
+  const counting = toLineItems(input.items).filter(countsToTotal);
+  const taxFree = isVatFreeTaxType(input.tax_type ?? "net");
+  const linesNet = netTotal(counting);
+  const linesGross =
+    input.tax_type === "gross"
+      ? counting.reduce((sum, item) => sum + item.quantity * (item.grossPrice ?? 0) * (1 - (item.discountPercentage ?? 0) / 100), 0)
+      : counting.reduce((sum, item) => sum + lineNet(item) * (1 + (taxFree ? 0 : item.taxRate) / 100), 0);
+  // An absolute discount counts against the net total — on a gross document against the gross one.
+  const base = input.tax_type === "gross" ? linesGross : linesNet;
+  const discountShare = base > 0 ? Math.min(1, input.total_discount_percent ? input.total_discount_percent / 100 : (input.total_discount_amount ?? 0) / base) : 0;
+  const net = round2(linesNet * (1 - discountShare));
+  return { linesNet, discount: round2(linesNet - net), net, gross: round2(linesGross * (1 - discountShare)) };
+}
+
+const SHIPPING_LABEL = { service: "Leistungsdatum", serviceperiod: "Leistungszeitraum", delivery: "Lieferdatum", deliveryperiod: "Lieferzeitraum" } as const;
+
+/** When the service is supplied, as Lexware Office will print it — and what it prints when nothing is set. */
+function shippingFact(input: SalesInput): { title: string; value: string } {
+  const shipping = shippingOf(input);
+  if (!shipping) return { title: "Leistungsdatum", value: "nicht angegeben — Lexware Office druckt „Lieferdatum = Belegdatum“" };
+  if (shipping.shippingType === "none") return { title: "Leistungsdatum", value: "keins (wird nicht gedruckt)" };
+  return {
+    title: SHIPPING_LABEL[shipping.shippingType],
+    value: "shippingEndDate" in shipping ? `${shortDate(shipping.shippingDate)} – ${shortDate(shipping.shippingEndDate)}` : shortDate(shipping.shippingDate),
+  };
+}
+
+/** The payment term as printed; on an invoice with the due date it gives. */
+function paymentFact(input: SalesInput, kind: string): { title: string; value: string } {
+  const payment = paymentOf(input);
+  if (!payment) return { title: "Zahlungsziel", value: "nicht angegeben — Vorgabe aus Lexware Office (siehe Befunde)" };
+  const days = payment.paymentTermDuration ?? 0;
+  const due = new Date(new Date(`${input.voucher_date ?? berlinToday()}T12:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
+  return { title: "Zahlungsziel", value: kind === "invoice" && days > 0 ? `${payment.paymentTermLabel} · fällig ${shortDate(due)}` : payment.paymentTermLabel! };
+}
+
+function taxFact(input: SalesInput): { title: string; value: string } {
+  const type = input.tax_type ?? "net";
+  const extra = [
+    input.tax_sub_type === "distanceSales" ? "Fernverkauf EU" : input.tax_sub_type === "electronicServices" ? "elektronische Dienstleistung EU" : null,
+    input.tax_note ? `Hinweis: ${cut(input.tax_note, DESCRIPTION_PREVIEW)}` : null,
+  ].filter(Boolean);
+  return { title: "Steuerart", value: [TAX_TYPE_LABEL[type], ...extra].join(" · ") };
+}
+
+/**
+ * The facts every sales document shows: customer as given, totals and
+ * discount, dates, payment and tax, texts, what it derives from, then the
+ * positions.
+ */
+function salesFacts(kind: "quotation" | "order-confirmation" | "invoice", input: SalesInput & { quotation_id?: string }, budget: number) {
   const items = toLineItems(input.items);
-  const counting = items.filter(countsToTotal);
   const optional = items.filter((item): item is PricedLineItem => isPricedLine(item) && item.optional === true);
-  const gross = round2(counting.reduce((sum, item) => sum + item.quantity * item.netPrice * (1 + item.taxRate / 100), 0));
+  const totals = salesTotals(input);
   const source = input.quotation_id ?? input.source_document_id;
   const ownText = (value?: string) => (value ? `eigener Text (${value.trim().length} Zeichen)` : "Standard aus Lexware Office");
   const head = [
@@ -91,15 +151,33 @@ function salesFacts(input: SalesInput & { quotation_id?: string }, budget: numbe
       : input.contact_id
         ? [{ title: "Kontakt", value: input.contact_id }]
         : []),
-    { title: "Positionen", value: String(counting.length) },
-    { title: "Netto", value: eur(totalOf(items)) },
-    { title: "Brutto", value: eur(gross) },
+    { title: "Positionen", value: String(items.filter(countsToTotal).length) },
+    { title: "Netto", value: eur(totals.net) },
+    { title: "Brutto", value: eur(totals.gross) },
+    ...(totals.discount > 0 || input.total_discount_percent || input.total_discount_amount
+      ? [
+          {
+            title: "Rabatt",
+            value:
+              `${input.total_discount_percent ? `${quantity(input.total_discount_percent)} %` : eur(input.total_discount_amount ?? 0)} auf die Summe ` +
+              `(−${eur(totals.discount)} netto, vor Rabatt ${eur(totals.linesNet)})`,
+          },
+        ]
+      : []),
     ...(optional.length > 0
       ? [{ title: "Optional", value: `${optional.length} Pos. · ${eur(netTotal(optional))} netto, nicht in der Summe` }]
       : []),
+    ...(input.voucher_date ? [{ title: "Belegdatum", value: shortDate(input.voucher_date) }] : []),
+    ...(kind === "quotation" ? [] : [shippingFact(input)]),
+    paymentFact(input, kind),
+    taxFact(input),
     ...(input.title ? [{ title: "Titel", value: input.title }] : []),
-    ...(input.valid_until ? [{ title: "Gültig bis", value: shortDate(input.valid_until) }] : []),
+    ...(kind === "quotation" ? [{ title: "Gültig bis", value: shortDate(validUntilOf(input)) + (input.valid_until ? "" : " (Standard)") }] : []),
     ...(source ? [{ title: "Bezugsbeleg", value: source }] : []),
+    ...(input.language === "en" ? [{ title: "Sprache", value: "Englisch" }] : []),
+    ...(input.print_layout ? [{ title: "Druckvorlage", value: input.print_layout }] : []),
+    ...(input.delivery_terms ? [{ title: "Lieferbedingungen", value: cut(input.delivery_terms, DESCRIPTION_PREVIEW) }] : []),
+    ...(input.buyer_reference !== undefined ? [{ title: "Leitweg-ID", value: input.buyer_reference || "keine (normale Rechnung statt XRechnung)" }] : []),
     { title: "Einleitung", value: ownText(input.introduction) },
     { title: "Schlussnotiz", value: ownText(input.remark) },
   ];
@@ -111,14 +189,14 @@ function salesHeadline(input: SalesInput) {
   const count = items.filter(countsToTotal).length;
   const optional = items.filter((item) => isPricedLine(item) && item.optional).length;
   return (
-    `${count} ${count === 1 ? "Position" : "Positionen"} · ${eur(totalOf(items))} netto` +
+    `${count} ${count === 1 ? "Position" : "Positionen"} · ${eur(salesTotals(input).net)} netto` +
     (optional > 0 ? ` · ${optional} optional` : "") +
     (input.draft ? " · Entwurf" : "")
   );
 }
 
 /** Quotation and order confirmation: finalized by default, a draft on request — the card must say which. */
-function finalizableCard(label: string, numberName: string) {
+function finalizableCard(kind: "quotation" | "order-confirmation", label: string, numberName: string) {
   return (input: Record<string, unknown>, reserved: number) => {
     const draft = (input as SalesInput).draft === true;
     const title = draft ? `${label} als Entwurf anlegen?` : `${label} anlegen?`;
@@ -126,20 +204,20 @@ function finalizableCard(label: string, numberName: string) {
       ? `Entwurf — nicht festgeschrieben, noch ohne ${numberName}. Gegenlesen und festschreiben in Lexware Office.`
       : `Wird direkt festgeschrieben (nicht als Entwurf) und erhält eine ${numberName}.`;
     const subtitle = salesHeadline(input);
-    return { title, subtitle, facts: salesFacts(input, CARD_TEXT_BUDGET - reserved - title.length - subtitle.length - note.length), note };
+    return { title, subtitle, facts: salesFacts(kind, input, CARD_TEXT_BUDGET - reserved - title.length - subtitle.length - note.length), note };
   };
 }
 
 const BUILDERS: Record<string, Builder> = {
-  create_quotation: finalizableCard("Angebot", "Angebotsnummer"),
+  create_quotation: finalizableCard("quotation", "Angebot", "Angebotsnummer"),
 
-  create_order_confirmation: finalizableCard("Auftragsbestätigung", "AB-Nummer"),
+  create_order_confirmation: finalizableCard("order-confirmation", "Auftragsbestätigung", "AB-Nummer"),
 
   create_invoice(input, reserved) {
     const title = "Rechnung als Entwurf anlegen?";
     const note = "Entsteht als Entwurf — festgeschrieben und versendet wird in Lexware Office.";
     const subtitle = salesHeadline(input);
-    return { title, subtitle, facts: salesFacts(input, CARD_TEXT_BUDGET - reserved - title.length - subtitle.length - note.length), note };
+    return { title, subtitle, facts: salesFacts("invoice", input, CARD_TEXT_BUDGET - reserved - title.length - subtitle.length - note.length), note };
   },
 
   create_purchase_invoice: purchaseCard,

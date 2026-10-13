@@ -7,12 +7,16 @@ import {
   COUNTING_LINE_MESSAGE,
   MAX_LINE_ITEMS,
   customerFields,
+  deliveryTermsField,
+  documentFields,
   documentTextFields,
   draftField,
   executeSalesDocument,
   hasCountingLine,
   lineItemSchema,
   salesApproval,
+  salesRefinement,
+  shippingFields,
   titleSchema,
   type SalesInput,
 } from "../lib/sales";
@@ -35,10 +39,14 @@ const inputSchema = z
       .uuid()
       .optional()
       .describe("UUID des Angebots, aus dem diese AB hervorgeht. Dann prüft das Tool Kunde und Positionssumme gegen das Angebot."),
+    ...shippingFields,
+    ...documentFields,
+    ...deliveryTermsField,
     ...documentTextFields,
     ...draftField("die AB"),
   })
   .strict()
+  .superRefine(salesRefinement("order-confirmation"))
   .refine((input) => (input.customer_number === undefined) !== (input.contact_id === undefined), {
     message: "Genau eines von customer_number und contact_id angeben.",
   });

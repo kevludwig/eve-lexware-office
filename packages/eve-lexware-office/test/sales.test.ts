@@ -12,6 +12,17 @@ const items = [{ name: "Workshop-Tag", quantity: 2, unit: "Tag", net_price: 1200
 const customer = on("GET", /^\/contacts$/, () => ({ content: [contact("c-1", "Nordlicht Consulting GmbH", { customer: { number: 10001 } })] }));
 const noDocuments = on("GET", /^\/voucherlist$/, () => ({ content: [] }));
 
+/** The account's default payment condition, as /payment-conditions lists it. */
+const paymentDefault = (days: number) =>
+  on("GET", /^\/payment-conditions$/, () => [
+    {
+      id: "p-1",
+      paymentTermLabelTemplate: days === 0 ? "Zahlbar sofort, rein netto" : "Zahlbar in {paymentRange} Tagen, rein netto ohne Abzug",
+      paymentTermDuration: days,
+      organizationDefault: true,
+    },
+  ]);
+
 /** A quotation as the API returns it. */
 const quotation = (lines: { net: number; quantity?: number }[], extra: Record<string, unknown> = {}): Route =>
   on("GET", /^\/quotations\//, () => ({
@@ -43,10 +54,11 @@ describe("line items", () => {
 
 describe("runSalesPreflight", () => {
   it("puts the customer's real name on the card", async () => {
-    useApi(customer, noDocuments);
+    useApi(customer, noDocuments, paymentDefault(0));
     const warnings = await runSalesPreflight("quotation", { customer_number: 10001, items });
 
-    assert.deepEqual(warnings, [{ kind: "customer-resolved", name: "Nordlicht Consulting GmbH", number: 10001 }]);
+    assert.deepEqual(warnings[0], { kind: "customer-resolved", name: "Nordlicht Consulting GmbH", number: 10001 });
+    assert.equal(warnings.length, 2);
   });
 
   it("says when the customer number belongs to nobody", async () => {
@@ -382,5 +394,249 @@ describe("written documents", () => {
     assert.equal(posts[0]!.query.get("precedingSalesVoucherId"), null);
     assert.equal(posts[0]!.query.get("finalize"), "true");
     assert.match(String(result.sourceDocument), /optionale Positionen/);
+  });
+});
+
+describe("document fields", () => {
+  const posted = (api: { calls: { method: string; body: unknown }[] }) => api.calls.find((call) => call.method === "POST")!.body as Record<string, any>;
+  const createdAs = (path: string) => [
+    on("POST", new RegExp(`^/${path}$`), () => ({ id: "new-1" }), 201),
+    on("GET", new RegExp(`^/${path}/new-1$`), () => ({ id: "new-1", voucherNumber: "X1", lineItems: [] })),
+  ];
+
+  it("puts service period and payment term of an invoice into the fields — a service period", async () => {
+    const api = useApi(customer, noDocuments, ...createdAs("invoices"));
+    const result = await executeSalesDocument(
+      "invoice",
+      { customer_number: 10001, items, service_period: { from: "2026-09-16", to: "2026-09-30" }, payment_term_days: 14, voucher_date: "2026-10-13" },
+      { callId: "fields-1" },
+    );
+
+    const body = posted(api);
+    assert.deepEqual(body.shippingConditions, {
+      shippingType: "serviceperiod",
+      shippingDate: "2026-09-16T00:00:00.000+02:00",
+      shippingEndDate: "2026-09-30T00:00:00.000+02:00",
+    });
+    assert.deepEqual(body.paymentConditions, { paymentTermLabel: "Zahlbar innerhalb von 14 Tagen ohne Abzug", paymentTermDuration: 14 });
+    assert.equal(body.voucherDate, "2026-10-13T00:00:00.000+02:00");
+    assert.equal(result.paymentTerm, "Zahlbar innerhalb von 14 Tagen ohne Abzug");
+    assert.equal(result.shipping, "serviceperiod 2026-09-16 – 2026-09-30");
+  });
+
+  it("maps every field of an order confirmation: delivery date, terms, skonto, discounts, tax, language, layout", async () => {
+    const api = useApi(
+      customer,
+      noDocuments,
+      on("GET", /^\/print-layouts$/, () => [{ id: "layout-en", name: "Englisch", default: false }]),
+      ...createdAs("order-confirmations"),
+    );
+    await executeSalesDocument(
+      "order-confirmation",
+      {
+        customer_number: 10001,
+        items: [{ ...items[0]!, discount_percent: 10 }],
+        delivery_date: "2026-11-02",
+        delivery_terms: "Lieferung frei Haus",
+        payment_term_days: 30,
+        cash_discount: { percent: 2, days: 10 },
+        total_discount_percent: 5,
+        language: "en",
+        print_layout: "englisch",
+        title: "Projekt Nordlicht",
+      },
+      { callId: "fields-2" },
+    );
+
+    const body = posted(api);
+    assert.deepEqual(body.shippingConditions, { shippingType: "delivery", shippingDate: "2026-11-02T00:00:00.000+01:00" });
+    assert.equal(body.deliveryTerms, "Lieferung frei Haus");
+    assert.deepEqual(body.paymentConditions, {
+      paymentTermLabel: "10 Tage 2 % Skonto, 30 Tage netto",
+      paymentTermDuration: 30,
+      paymentDiscountConditions: { discountPercentage: 2, discountRange: 10 },
+    });
+    assert.deepEqual(body.totalPrice, { currency: "EUR", totalDiscountPercentage: 5 });
+    assert.equal(body.lineItems[0].discountPercentage, 10);
+    assert.deepEqual(body.taxConditions, { taxType: "net" });
+    assert.equal(body.language, "en");
+    assert.equal(body.printLayoutId, "layout-en");
+    assert.equal(body.title, "Projekt Nordlicht");
+  });
+
+  it("sends a quotation without shipping conditions, with gross prices, alternatives, an article and its validity", async () => {
+    const api = useApi(
+      customer,
+      noDocuments,
+      on("GET", /^\/articles\/a0000000-0000-4000-8000-000000000001$/, () => ({ id: "a0000000-0000-4000-8000-000000000001", title: "Hosting S", type: "SERVICE" })),
+      ...createdAs("quotations"),
+    );
+    const result = await executeSalesDocument(
+      "quotation",
+      {
+        customer_number: 10001,
+        tax_type: "gross",
+        voucher_date: "2026-10-13",
+        items: [
+          {
+            name: "Hosting S",
+            quantity: 12,
+            unit: "Monat",
+            gross_price: 29.75,
+            tax_rate: 19,
+            article_id: "a0000000-0000-4000-8000-000000000001",
+            alternatives: [{ name: "Hosting M", quantity: 12, unit: "Monat", gross_price: 59.5, tax_rate: 19 }],
+          },
+        ],
+        total_discount_amount: 10,
+      },
+      { callId: "fields-3" },
+    );
+
+    const body = posted(api);
+    assert.equal("shippingConditions" in body, false);
+    assert.deepEqual(body.taxConditions, { taxType: "gross" });
+    assert.deepEqual(body.lineItems[0].unitPrice, { currency: "EUR", grossAmount: 29.75, taxRatePercentage: 19 });
+    assert.equal(body.lineItems[0].id, "a0000000-0000-4000-8000-000000000001");
+    assert.equal(body.lineItems[0].type, "service");
+    assert.equal(body.lineItems[0].subItems[0].alternative, true);
+    assert.deepEqual(body.totalPrice, { currency: "EUR", totalDiscountAbsolute: 10 });
+    assert.equal(body.expirationDate, "2026-11-12T00:00:00.000+01:00");
+    assert.equal(result.validUntil, "2026-11-12");
+    assert.equal(result.netTotal, 300);
+  });
+
+  it("sends § 13b with 0 % and its note, and a Leitweg-ID override", async () => {
+    const api = useApi(customer, noDocuments, ...createdAs("invoices"));
+    await executeSalesDocument(
+      "invoice",
+      {
+        customer_number: 10001,
+        items: [{ ...items[0]!, tax_rate: 0 }],
+        service_date: "2026-10-01",
+        tax_type: "externalService13b",
+        tax_note: "Steuerschuldnerschaft des Leistungsempfängers",
+        buyer_reference: "04011000-1234512345-06",
+      },
+      { callId: "fields-4" },
+    );
+
+    const body = posted(api);
+    assert.deepEqual(body.taxConditions, { taxType: "externalService13b", taxTypeNote: "Steuerschuldnerschaft des Leistungsempfängers" });
+    assert.deepEqual(body.shippingConditions, { shippingType: "service", shippingDate: "2026-10-01T00:00:00.000+02:00" });
+    assert.deepEqual(body.xRechnung, { buyerReference: "04011000-1234512345-06" });
+  });
+
+  it("stops before writing when the print layout is gone", async () => {
+    const api = useApi(customer, noDocuments, on("GET", /^\/print-layouts$/, () => []), ...createdAs("invoices"));
+    await assert.rejects(
+      () => executeSalesDocument("invoice", { customer_number: 10001, items, print_layout: "Englisch" }, { callId: "fields-5" }),
+      /Druckvorlage/,
+    );
+    assert.equal(api.calls.filter((call) => call.method === "POST").length, 0);
+  });
+});
+
+describe("document field validation", () => {
+  const parse = (tool: { inputSchema: { safeParse(value: unknown): { success: boolean; error?: { issues: { message: string }[] } } } }, input: Record<string, unknown>) =>
+    tool.inputSchema.safeParse({ customer_number: 10001, items, ...input });
+  const ok = (tool: Parameters<typeof parse>[0], input: Record<string, unknown>) => parse(tool, input).success;
+  const message = (tool: Parameters<typeof parse>[0], input: Record<string, unknown>) => (parse(tool, input).error?.issues ?? []).map((issue) => issue.message).join(" | ");
+
+  it("takes a service period and a payment term", () => {
+    assert.equal(ok(createInvoice, { service_period: { from: "2026-09-16", to: "2026-09-30" }, payment_term_days: 14 }), true);
+  });
+
+  it("refuses a period that ends before it starts, and a day that does not exist", () => {
+    assert.equal(ok(createInvoice, { service_period: { from: "2026-09-30", to: "2026-09-16" } }), false);
+    assert.equal(ok(createInvoice, { service_date: "2026-02-30" }), false);
+    assert.equal(ok(createInvoice, { voucher_date: "13.10.2026" }), false);
+  });
+
+  it("takes one kind of service date only", () => {
+    assert.match(message(createInvoice, { service_date: "2026-09-30", service_period: { from: "2026-09-16", to: "2026-09-30" } }), /Nur eines von/);
+  });
+
+  it("keeps fields to the kinds the API knows them for", () => {
+    assert.equal(ok(createQuotation, { service_date: "2026-09-30" }), false);
+    assert.equal(ok(createInvoice, { delivery_terms: "frei Haus" }), false);
+    assert.equal(ok(createOrderConfirmation, { delivery_terms: "frei Haus" }), true);
+    assert.equal(ok(createOrderConfirmation, { buyer_reference: "x" }), false);
+    assert.equal(ok(createInvoice, { items: [{ ...items[0], alternatives: [items[0]] }] }), false);
+    assert.equal(ok(createQuotation, { items: [{ ...items[0], alternatives: [items[0]] }] }), true);
+  });
+
+  it("needs a payment term for its label and skonto, and skonto within it", () => {
+    assert.equal(ok(createInvoice, { cash_discount: { percent: 2, days: 10 } }), false);
+    assert.equal(ok(createInvoice, { payment_term_label: "sofort" }), false);
+    assert.match(message(createInvoice, { payment_term_days: 7, cash_discount: { percent: 2, days: 10 } }), /Skontofrist/);
+    assert.equal(ok(createInvoice, { payment_term_days: 30, cash_discount: { percent: 2, days: 10 } }), true);
+  });
+
+  it("takes one total discount", () => {
+    assert.equal(ok(createQuotation, { total_discount_percent: 5 }), true);
+    assert.equal(ok(createQuotation, { total_discount_percent: 5, total_discount_amount: 10 }), false);
+  });
+
+  it("holds tax types to their rates and prices", () => {
+    assert.match(message(createInvoice, { tax_type: "intraCommunitySupply" }), /tax_rate 0/);
+    assert.equal(ok(createInvoice, { tax_type: "intraCommunitySupply", items: [{ ...items[0], tax_rate: 0 }] }), true);
+    assert.match(message(createInvoice, { tax_type: "gross" }), /gross_price/);
+    assert.equal(ok(createInvoice, { tax_type: "gross", items: [{ name: "A", quantity: 1, unit: "Stück", gross_price: 119, tax_rate: 19 }] }), true);
+    assert.equal(ok(createInvoice, { items: [{ name: "A", quantity: 1, unit: "Stück", gross_price: 119, tax_rate: 19 }] }), false);
+    assert.equal(ok(createInvoice, { items: [{ ...items[0], gross_price: 119 }] }), false);
+    assert.equal(ok(createInvoice, { items: [{ ...items[0], tax_rate: 21 }] }), false);
+    assert.equal(ok(createInvoice, { items: [{ ...items[0], tax_rate: 21 }], tax_sub_type: "distanceSales" }), true);
+    assert.equal(ok(createInvoice, { tax_note: "Hinweis" }), false);
+  });
+
+  it("refuses a quotation valid before its own date", () => {
+    assert.equal(ok(createQuotation, { voucher_date: "2026-10-13", valid_until: "2026-10-01" }), false);
+  });
+});
+
+describe("document field checks before the card", () => {
+  const titles = (warnings: { kind: string; title?: string; value?: string }[]) => warnings.filter((warning) => warning.kind === "note").map((warning) => `${warning.title}: ${warning.value}`);
+
+  it("warns when an invoice says nothing about when the service was supplied", async () => {
+    useApi(customer, noDocuments, paymentDefault(14));
+    const notes = titles(await runSalesPreflight("invoice", { customer_number: 10001, items, payment_term_days: 14 }));
+    assert.ok(notes.some((note) => /^⚠ Leistungsdatum fehlt: .*§ 14 Abs. 4 Nr. 6 UStG/.test(note)), notes.join("\n"));
+  });
+
+  it("does not warn on an order confirmation or with a service period", async () => {
+    useApi(customer, noDocuments, paymentDefault(14));
+    assert.ok(!titles(await runSalesPreflight("order-confirmation", { customer_number: 10001, items })).some((note) => /Leistungsdatum/.test(note)));
+    assert.ok(!titles(await runSalesPreflight("invoice", { customer_number: 10001, items, service_date: "2026-10-01" })).some((note) => /Leistungsdatum/.test(note)));
+  });
+
+  it("names the payment term that applies without one, and warns on „sofort“", async () => {
+    useApi(customer, noDocuments, paymentDefault(0));
+    const notes = titles(await runSalesPreflight("invoice", { customer_number: 10001, items, service_date: "2026-10-01" }));
+    assert.ok(notes.includes("⚠ Zahlungsziel-Vorgabe: nicht angegeben — es gilt die Zahlungsbedingung des Kontakts, falls dort eine hinterlegt ist, sonst der Konto-Standard „Zahlbar sofort, rein netto“"), notes.join("\n"));
+  });
+
+  it("asks nothing about the payment term when one is given", async () => {
+    const api = useApi(customer, noDocuments, paymentDefault(0));
+    await runSalesPreflight("invoice", { customer_number: 10001, items, service_date: "2026-10-01", payment_term_days: 14 });
+    assert.ok(!api.calls.some((call) => call.path === "/payment-conditions"));
+  });
+
+  it("checks a reverse-charge customer for VAT ID and country", async () => {
+    useApi(
+      on("GET", /^\/contacts$/, () => ({ content: [{ ...contact("c-1", "Acme BV", { customer: { number: 10001 } }), addresses: { billing: [{ countryCode: "CH" }] } }] })),
+      noDocuments,
+      paymentDefault(14),
+      on("GET", /^\/countries$/, () => [{ countryCode: "CH", countryNameDE: "Schweiz", taxClassification: "thirdPartyCountry" }]),
+    );
+    const notes = titles(await runSalesPreflight("invoice", { customer_number: 10001, items: [{ ...items[0]!, tax_rate: 0 }], tax_type: "externalService13b", service_date: "2026-10-01" }));
+    assert.ok(notes.some((note) => /USt-IdNr/.test(note)), notes.join("\n"));
+    assert.ok(notes.some((note) => /Schweiz/.test(note)), notes.join("\n"));
+  });
+
+  it("says when a print layout does not exist", async () => {
+    useApi(customer, noDocuments, paymentDefault(14), on("GET", /^\/print-layouts$/, () => [{ id: "l-1", name: "Standard", default: true }]));
+    const notes = titles(await runSalesPreflight("quotation", { customer_number: 10001, items, print_layout: "Englisch" }));
+    assert.ok(notes.some((note) => /^⚠ Druckvorlage: „Englisch“ nicht eindeutig gefunden/.test(note)), notes.join("\n"));
   });
 });

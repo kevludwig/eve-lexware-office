@@ -1,0 +1,127 @@
+exports[`sales card: dates, payment, tax, discounts > shows a quotation's discounts, gross prices, alternatives, language and layout 1`] = `
+{
+  "tool": "create_quotation",
+  "title": "Angebot anlegen?",
+  "subtitle": "1 Position · 256,50 EUR netto",
+  "facts": [
+    {
+      "title": "Kundennummer",
+      "value": "10001"
+    },
+    {
+      "title": "Positionen",
+      "value": "1"
+    },
+    {
+      "title": "Netto",
+      "value": "256,50 EUR"
+    },
+    {
+      "title": "Brutto",
+      "value": "305,24 EUR"
+    },
+    {
+      "title": "Rabatt",
+      "value": "5 % auf die Summe (−13,50 EUR netto, vor Rabatt 270,00 EUR)"
+    },
+    {
+      "title": "Belegdatum",
+      "value": "13.10.2026"
+    },
+    {
+      "title": "Zahlungsziel",
+      "value": "10 Tage 2 % Skonto, 30 Tage netto"
+    },
+    {
+      "title": "Steuerart",
+      "value": "Brutto (Preise inkl. USt.)"
+    },
+    {
+      "title": "Gültig bis",
+      "value": "12.11.2026 (Standard)"
+    },
+    {
+      "title": "Sprache",
+      "value": "Englisch"
+    },
+    {
+      "title": "Druckvorlage",
+      "value": "Englisch"
+    },
+    {
+      "title": "Einleitung",
+      "value": "Standard aus Lexware Office"
+    },
+    {
+      "title": "Schlussnotiz",
+      "value": "Standard aus Lexware Office"
+    },
+    {
+      "title": "1. Hosting S",
+      "value": "12 Monat × 29,75 EUR brutto − 10 %"
+    },
+    {
+      "title": "Alternative zu 1. Hosting M",
+      "value": "12 Monat × 59,50 EUR brutto · nicht in der Summe"
+    }
+  ],
+  "note": "Wird direkt festgeschrieben (nicht als Entwurf) und erhält eine Angebotsnummer.",
+  "findings": []
+}
+`;
+
+exports[`sales card: dates, payment, tax, discounts > shows service period, payment term with due date, and tax type of an invoice 1`] = `
+{
+  "tool": "create_invoice",
+  "title": "Rechnung als Entwurf anlegen?",
+  "subtitle": "1 Position · 1.200,00 EUR netto",
+  "facts": [
+    {
+      "title": "Kundennummer",
+      "value": "10042"
+    },
+    {
+      "title": "Positionen",
+      "value": "1"
+    },
+    {
+      "title": "Netto",
+      "value": "1.200,00 EUR"
+    },
+    {
+      "title": "Brutto",
+      "value": "1.428,00 EUR"
+    },
+    {
+      "title": "Belegdatum",
+      "value": "13.10.2026"
+    },
+    {
+      "title": "Leistungszeitraum",
+      "value": "16.9.2026 – 30.9.2026"
+    },
+    {
+      "title": "Zahlungsziel",
+      "value": "Zahlbar innerhalb von 14 Tagen ohne Abzug · fällig 27.10.2026"
+    },
+    {
+      "title": "Steuerart",
+      "value": "Netto (USt. ausgewiesen)"
+    },
+    {
+      "title": "Einleitung",
+      "value": "Standard aus Lexware Office"
+    },
+    {
+      "title": "Schlussnotiz",
+      "value": "Standard aus Lexware Office"
+    },
+    {
+      "title": "1. Beratung",
+      "value": "1 Pauschale × 1.200,00 EUR"
+    }
+  ],
+  "note": "Entsteht als Entwurf — festgeschrieben und versendet wird in Lexware Office.",
+  "findings": []
+}
+`;
