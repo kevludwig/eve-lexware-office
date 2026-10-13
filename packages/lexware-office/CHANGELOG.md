@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0
+
+### Added
+
+- `createSalesDocument` takes every writable field of the sales document endpoints: `voucherDate`, `shippingConditions` (`service`, `serviceperiod`, `delivery`, `deliveryperiod`, `none`), `paymentConditions` (term, label, cash discount), `taxConditions` (`net`, `gross`, `vatfree`, the § 13b, intra-community, third-country and photovoltaic types, `taxSubType`, `taxTypeNote`), `totalDiscountPercentage`, `language`, `printLayoutId`, `deliveryTerms` (order confirmations) and `xRechnung.buyerReference` (invoices). The options are typed as `NewSalesDocument`.
+- Line items take `discountPercentage`, `grossPrice` (sent on a `gross` document), an `article` reference (`service` or `material`), and on quotations `alternatives`, sent as alternative sub-items.
+- `salesDocumentProblems` lists what the API would drop or reject — a field on the wrong kind, a period ending before it starts, a vat-free type with a rate above 0 %, a gross document without gross prices — and `createSalesDocument` throws on it before sending.
+- `paymentTermLabel(days, discount?)` phrases a payment term as Lexware Office does.
+- Account settings: `listPrintLayouts`, `resolvePrintLayout`, `listPaymentConditions`, `defaultPaymentCondition`, `getProfile`, `listCountries`, `getArticle`.
+- `Contact` carries `isCompany`, `vatRegistrationId`, `allowTaxFreeInvoices` and the billing `countryCode`.
+- `VALID_TAX_RATES`, `SALES_TAX_TYPES`, `isVatFreeTaxType`, `lineNet`; `SALES_TEXT_LIMITS.deliveryTerms`.
+
+### Changed
+
+- Quotations are sent without shipping conditions — the API documents none for them. Order confirmations and invoices without `shippingConditions` keep the default: delivery on the voucher date.
+- `netTotal` and `getSalesDocument().lineItemsNet`, and with them the duplicate search, count a line's `discountPercentage`.
+
 ## 0.2.0
 
 ### Added

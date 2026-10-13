@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0
+
+### Added
+
+- `create_invoice`, `create_order_confirmation` and `create_quotation` take the document's other fields: `voucher_date`; `payment_term_days` with optional `payment_term_label` and `cash_discount`; `total_discount_percent` or `total_discount_amount`; `tax_type` with `tax_sub_type` and `tax_note`; `language`; `print_layout` (name or id). Positions take `discount_percent`, `gross_price` (on `tax_type: "gross"`) and `article_id`; quotation positions take `alternatives`.
+- Order confirmations and invoices take when the service is supplied: `service_date`, `service_period { from, to }`, `delivery_date`, `delivery_period`, or `no_service_date`. Order confirmations take `delivery_terms`, invoices `title` and `buyer_reference` (Leitweg-ID).
+- The schemas check what crosses fields: one kind of service date, a period that does not end before it starts, real calendar days, one total discount, skonto within the payment term, 0 % on vat-free tax types, gross prices only on gross documents, validity not before the voucher date.
+- The approval card shows the service date or period, the payment term (on an invoice with its due date), the tax type, total discount and line discounts, alternatives, voucher date, language, print layout, delivery terms and Leitweg-ID.
+- New findings: a warning when an invoice has no service date (§ 14 (4) No. 6 UStG); the payment term that applies when none is given (the contact's, else the account's default, named — a warning when that is „sofort"); a print layout or article that does not exist; a vat-free tax type the customer's VAT ID, country or the account does not support.
+- The result reports `shipping`, `paymentTerm`, `taxType`, and `voucherDate`, `totalDiscount` and `language` where set.
+
+### Changed
+
+- A quotation's default validity counts from its voucher date, and the card shows it.
+- Tax rates 0, 5, 7, 16 and 19 % — other EU rates with `tax_sub_type`.
+- The `verkaufsbelege` skill maps orders such as „Leistungszeitraum 16.09.–30.09.", „14 Tage netto" or „2 % Skonto" to the fields instead of the texts, documents the defaults, when to set a vat-free tax type, and what to take over from a source document.
+- Requires `@kevludwig/lexware-office` 0.3.0.
+
 ## 0.4.0
 
 ### Breaking
