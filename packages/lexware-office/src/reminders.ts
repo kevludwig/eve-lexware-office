@@ -32,12 +32,24 @@ export interface ReminderPolicy {
   /** A declined reminder stays quiet this many days. Default: 7. */
   declinedQuietDays: number;
   /**
-   * Whether a day (yyyy-MM-dd) counts as a day by which money can arrive.
-   * Set, a due date on another day moves to the next one that does — as § 193
-   * BGB moves a deadline off weekends and holidays. Not set: due dates count
-   * as they are. `germanPaymentDay` covers weekends and nationwide holidays.
+   * Whether a day (yyyy-MM-dd) counts as a day on which money is booked.
+   * Set, an invoice due on another day (weekend, holiday) gets its reminder on
+   * the minDaysOverdue-th such day after the due date — Saturday with two
+   * days: Tuesday. Invoices due on such a day keep counting calendar days.
+   * Not set: calendar days throughout. `germanPaymentDay` covers weekends and
+   * nationwide holidays.
    */
   isPaymentDay?: (day: string) => boolean;
+}
+
+/** The n-th day after `day` that `isPaymentDay` accepts. */
+export function nthPaymentDayAfter(day: string, n: number, isPaymentDay: (day: string) => boolean): string {
+  let current = day;
+  for (let found = 0, step = 0; found < Math.max(1, n) && step < 60; step++) {
+    current = addDays(current, 1);
+    if (isPaymentDay(current)) found++;
+  }
+  return current;
 }
 
 /** The day itself, or the next one `isPaymentDay` accepts (at most two weeks on). */
@@ -113,7 +125,11 @@ export function reminderDueDate(invoice: Dated, policy: ReminderPolicy = DEFAULT
   const due = isDueImmediately(invoice)
     ? addDays(invoice.voucherDate, policy.immediatePaymentTermDays)
     : invoice.dueDate.slice(0, 10);
-  return nextPaymentDay(due, policy.isPaymentDay);
+  if (!policy.isPaymentDay || policy.isPaymentDay(due)) return due;
+  // Due on a weekend or holiday: the reminder comes on the minDaysOverdue-th payment day after it.
+  // Returned as the day minDaysOverdue calendar days before that, so earliestReminderDate and
+  // daysPastReminderDue keep counting as they always did.
+  return addDays(nthPaymentDayAfter(due, policy.minDaysOverdue, policy.isPaymentDay), -policy.minDaysOverdue);
 }
 
 /** Days past the reminder due date. */

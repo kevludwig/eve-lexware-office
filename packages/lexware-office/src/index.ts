@@ -36,6 +36,7 @@ export {
   isOpenForReminder,
   reminderDueDate,
   nextPaymentDay,
+  nthPaymentDayAfter,
   germanNationwideHolidays,
   germanPaymentDay,
   reminderLedger,

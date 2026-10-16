@@ -23,11 +23,15 @@ describe("payment days", () => {
     assert.equal(nextPaymentDay("2026-10-17"), "2026-10-17");
   });
 
-  it("counts the reminder from the moved due date, then calendar days", () => {
+  it("reminds on the second payment day after a weekend or holiday, two calendar days after a weekday", () => {
     assert.equal(earliestReminderDate(invoice("2026-10-15"), policy), "2026-10-17"); // Thu → Sat
-    assert.equal(earliestReminderDate(invoice("2026-10-17"), policy), "2026-10-21"); // Sat → Mon → Wed
-    // Due immediately: invoice date + 14, moved if that is a weekend.
-    assert.equal(reminderDueDate(invoice("2026-10-03", "2026-10-03"), policy), "2026-10-19"); // 17.10. Sat → Mon
+    assert.equal(earliestReminderDate(invoice("2026-10-16"), policy), "2026-10-18"); // Fri → Sun
+    assert.equal(earliestReminderDate(invoice("2026-10-17"), policy), "2026-10-20"); // Sat → Tue
+    assert.equal(earliestReminderDate(invoice("2026-10-18"), policy), "2026-10-20"); // Sun → Tue
+    assert.equal(earliestReminderDate(invoice("2026-12-25"), policy), "2026-12-29"); // Christmas → Mon, Tue
+    assert.equal(earliestReminderDate(invoice("2026-05-14", "2026-05-01"), policy), "2026-05-18"); // Ascension (Thu) → Fri, Mon
+    // Due immediately: invoice date + 14; on a weekend, again the second payment day after.
+    assert.equal(earliestReminderDate(invoice("2026-10-03", "2026-10-03"), policy), "2026-10-20"); // +14 = Sat 17.10. → Tue
     assert.equal(reminderDueDate(invoice("2026-10-17"), DEFAULT_REMINDER_POLICY), "2026-10-17");
   });
 });
