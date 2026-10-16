@@ -59,6 +59,28 @@ describe("createLexwareClient", () => {
     assert.ok(calls[1]!.at - calls[0]!.at >= 190, `waited ${calls[1]!.at - calls[0]!.at} ms`);
   });
 
+  it("waits until the HTTP date in Retry-After", async () => {
+    // HTTP dates have whole seconds: the next full second plus one, so the wait is between 1 and 2 s.
+    const until = new Date(Math.ceil(Date.now() / 1_000) * 1_000 + 1_000).toUTCString();
+    const { impl, calls } = fakeFetch([() => new Response("", { status: 429, headers: { "retry-after": until } }), () => json({ ok: true })]);
+    const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0, rateLimitBackoffMs: 1 });
+    await client.request("/x");
+    const waited = calls[1]!.at - calls[0]!.at;
+    assert.ok(waited >= 900 && waited < 2_500, `waited ${waited} ms`);
+  });
+
+  it("stops waiting for a retry when the caller aborts", async () => {
+    const { impl, calls } = fakeFetch([() => new Response("", { status: 429, headers: { "retry-after": "5" } }), () => json({ ok: true })]);
+    const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0 });
+    const controller = new AbortController();
+    const started = Date.now();
+    const pending = client.request("/x", { signal: controller.signal });
+    setTimeout(() => controller.abort(new Error("cancelled by the caller")), 50);
+    await assert.rejects(pending, /cancelled by the caller/);
+    assert.ok(Date.now() - started < 1_000, "did not wait out Retry-After");
+    assert.equal(calls.length, 1);
+  });
+
   it("turns an error answer into LexwareApiError with a hint", async () => {
     const { impl } = fakeFetch([() => new Response("forbidden", { status: 403, statusText: "Forbidden" })]);
     const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0 });
@@ -122,11 +144,11 @@ describe("file uploads", () => {
 
 describe("contact search", () => {
   it("does not ask Lexware for names under three characters (it answers 400)", async () => {
-    const { impl, calls } = fakeFetch([() => json({ content: [{ id: "c1", company: { name: "KLM GmbH" }, roles: { customer: {} } }] })]);
+    const { impl, calls } = fakeFetch([() => json({ content: [{ id: "c1", company: { name: "XYZ GmbH" }, roles: { customer: {} } }] })]);
     const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0 });
-    assert.deepEqual(await findContactsByName(client, " AB "), []);
+    assert.deepEqual(await findContactsByName(client, " XY "), []);
     assert.equal(calls.length, 0);
-    assert.equal((await findContactsByName(client, "KLM")).length, 1);
+    assert.equal((await findContactsByName(client, "XYZ")).length, 1);
     assert.equal(calls.length, 1);
   });
 });

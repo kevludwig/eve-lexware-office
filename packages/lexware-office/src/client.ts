@@ -106,6 +106,23 @@ export function query(params: Record<string, string | number | boolean | undefin
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Waits `ms`, or rejects with the signal's reason as soon as it aborts. */
+function abortableSleep(ms: number, signal?: AbortSignal | null): Promise<void> {
+  if (!signal) return sleep(ms).then(() => undefined);
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /** The server's Retry-After in ms (seconds or an HTTP date), capped at 10 s; null without one. */
 function retryAfterMs(response: Response): number | null {
   const header = response.headers.get("retry-after")?.trim();
@@ -167,7 +184,8 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
     let response = await fire();
     for (let attempt = 1; response.status === 429 && attempt <= retries; attempt++) {
       await response.body?.cancel().catch(() => undefined);
-      await sleep(retryAfterMs(response) ?? backoffMs * attempt);
+      // The caller's cancellation also ends the wait between retries.
+      await abortableSleep(retryAfterMs(response) ?? backoffMs * attempt, init.signal);
       response = await fire();
     }
     if (!response.ok) {

@@ -1,8 +1,8 @@
 /**
  * Contacts — customers and vendors alike.
  *
- * Search is fuzzy on the API side: "Nordlicht" finds "Nordlicht Consulting
- * GmbH", "Müller" may find three. Functions here return candidates and leave
+ * Search is fuzzy on the API side: "Beispiel" finds "Beispiel GmbH",
+ * "Müller" may find three. Functions here return candidates and leave
  * the choice to the caller; guessing one of several is the worse mistake.
  */
 
