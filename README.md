@@ -11,7 +11,7 @@ Use the library on its own for scripts and backends. Add the extension when an a
 
 ```bash
 npm install @kevludwig/lexware-office
-npm install @kevludwig/eve-lexware-office   # plus the library, for an eve agent
+npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office zod   # for an eve agent
 ```
 
 ## The library in a minute
@@ -53,7 +53,7 @@ The mount's file name is the namespace: tools arrive as `lexware__read`, `lexwar
 pnpm install
 pnpm build      # library to dist/, extension to dist/extension/
 pnpm typecheck
-pnpm test       # 100 tests, no network: a fake API answers every request
+pnpm test       # 192 tests, no network: a fake API answers every request
 ```
 
 Node 24, pnpm workspaces. The tests run without a Lexware Office account.

@@ -5,10 +5,10 @@ An [eve](https://eve.dev) extension for [Lexware Office](https://www.lexware.de/
 Built on [`@kevludwig/lexware-office`](../lexware-office), which holds the API client and the rules.
 
 ```bash
-npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office
+npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office zod
 ```
 
-Node 24 or newer, eve 0.77 or newer.
+Node 24 or newer, eve 0.77 or newer, zod 4 (a peer dependency, so the schemas the extension exports are your zod's).
 
 ## Mount it
 
@@ -44,9 +44,10 @@ The file name is the namespace: this mount gives the agent `lexware__read`, `lex
 | `create_order_confirmation` | An order confirmation, optionally following a quotation (`quotation_id`). Descriptions, headings and texts as on a quotation, no optional positions; service or delivery date and `delivery_terms`. Finalized, or a draft with `draft: true`. Lexware Office does not chain it to a quotation with optional positions. | yes |
 | `create_invoice` | An outgoing invoice, optionally following a quotation or order confirmation. Descriptions, headings and texts as above, service date or period, `title`, and a Leitweg-ID override. **Always a draft** — you finalize and send it in Lexware Office. | yes |
 
-All three take the document's other writable fields too: `voucher_date`, a payment term (`payment_term_days`, optional `payment_term_label` and `cash_discount`), `total_discount_percent` or `total_discount_amount`, `discount_percent` per position, `tax_type` (net, gross with `gross_price`, and the vat-free types such as `externalService13b`) with `tax_sub_type` and `tax_note`, `language`, `print_layout` (name or id), and `article_id` per position. Service date and period (`service_date`, `service_period`, `delivery_date`, `delivery_period`, `no_service_date`) exist on order confirmations and invoices only — the API has none on quotations. Left out, Lexware Office's defaults apply: delivery on the voucher date, the contact's payment term or else the account's, net taxation. The card shows each of these, warns about an invoice without a service date (§ 14 (4) No. 6 UStG), names the account's default payment term when none is given, and checks a vat-free tax type against the customer's VAT ID, country, and the account.
 | `create_purchase_invoice` | A purchase invoice as a voucher, with the original attached, amounts per tax rate, and the posting category. Foreign currency is booked with the amount actually debited. | yes |
 | `send_payment_reminder` | One friendly reminder by mail, with the invoice PDF attached. | yes |
+
+The three sales document tools take the document's other writable fields too: `voucher_date`, a payment term (`payment_term_days`, optional `payment_term_label` and `cash_discount`), `total_discount_percent` or `total_discount_amount`, `discount_percent` per position, `tax_type` (net, gross with `gross_price`, and the vat-free types such as `externalService13b`) with `tax_sub_type` and `tax_note`, `language`, `print_layout` (name or id), and `article_id` per position. Service date and period (`service_date`, `service_period`, `delivery_date`, `delivery_period`, `no_service_date`) exist on order confirmations and invoices only — the API has none on quotations. Left out, Lexware Office's defaults apply: delivery on the voucher date, the contact's payment term or else the account's, net taxation. The card shows each of these, warns about an invoice without a service date (§ 14 (4) No. 6 UStG), names the account's default payment term when none is given, and checks a vat-free tax type against the customer's VAT ID, country, and the account.
 
 The agent-facing texts — tool descriptions, skills, cards — are **German**.
 
@@ -139,32 +140,51 @@ export default lexware({
 
 Return `"ask"` for the card, `"approve"` to run without one, `{ deny: "reason" }` to refuse. What the tool's own checks refuse never reaches `decide`, and a `decide` that throws asks a person. The re-check right before writing runs either way.
 
+A call `decide` approves never shows a card: it reaches neither `onApprovalCard` nor `canApprove` — no person answers it, so record it yourself before returning `"approve"`.
+
+eve runs a tool's request policy again right before an approved call executes (its recheck). The tool's own checks run again then and may still refuse; `decide` and `onApprovalCard` do not — the extension marks each call in session state once a person was asked or `decide` approved it. Only where that state cannot be read (no eve session) can `decide` be called a second time for the same `context.callId`, so keep it idempotent: record an approval under the call id, not once per call of `decide`.
+
 ## Without eve: `./operations`
 
 The customer and sales document writes also run without eve — for another surface on the same account, such as a remote MCP server whose writes wait on an approval page:
 
 ```ts
-import { createLexwareClient, memoryStore } from "@kevludwig/lexware-office";
-import { buildCard, executeApprovedSalesDocument, invoiceInputSchema, journalIn, prepareSalesDocument, shownDuplicates } from "@kevludwig/eve-lexware-office/operations";
+import { createLexwareClient } from "@kevludwig/lexware-office";
+import {
+  buildCard,
+  executeApprovedSalesDocument,
+  journalIn,
+  orderConfirmationInputSchema,
+  prepareSalesDocument,
+  shownDuplicates,
+  withSource,
+} from "@kevludwig/eve-lexware-office/operations";
 
 const client = createLexwareClient({ apiKey });
-const input = invoiceInputSchema.parse(args);
-const warnings = await prepareSalesDocument(client, "invoice", input);
-const card = buildCard("create_invoice", input, warnings);
+// An order confirmation names its quotation as `quotation_id`: withSource turns
+// it into the source fields that prepare and execute read — pass the same value to both.
+const input = withSource(orderConfirmationInputSchema.parse(args));
+const warnings = await prepareSalesDocument(client, "order-confirmation", input);
+const card = buildCard("create_order_confirmation", input, warnings);
+if (!card) throw new Error("not one of the extension's writing tools");
 // keep input and warnings with the pending action; after a person approves:
 const shown = shownDuplicates(warnings);
-await executeApprovedSalesDocument({ client, journal: journalIn(store) }, "invoice", input, {
+await executeApprovedSalesDocument({ client, journal: journalIn(store) }, "order-confirmation", input, {
   id: actionId,
   shownOnCard: (url) => shown.includes(url),
   notes: () => card.findings.map((finding) => `${finding.title}: ${finding.value}`),
 });
 ```
 
+Quotations and invoices work the same without `withSource` (`quotationInputSchema`, `invoiceInputSchema`; an invoice's `source_document_id` is already the generic field). `buildCard` returns `null` for a tool name that is not one of the extension's writing tools. For customers, `prepareCustomer` returns `shownContactIds`; pass them to `executeApprovedCustomer` as they are (an array) or as a `Set`. `store` is any `JsonStore` from `@kevludwig/lexware-office`.
+
+Nothing behind `./operations` loads eve, the mount's configuration or the Vercel Blob store — a server without eve installed can import it (a test checks this with eve made unresolvable). The checks it runs are the eve tools' checks; `decide`, `canApprove` and `onApprovalCard` are the mount's and do not apply here — whoever runs the approval page decides who may approve.
+
 The same checks, card, journal and re-check as the eve tools. Keep the input unchanged between card and click — eve guarantees that per call, your store must.
 
 ## Tests
 
-`npm test` runs 127 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
+`npm test` runs 136 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
 
 ## Not affiliated with Lexware
 

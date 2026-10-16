@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.1
+
+### Fixed
+
+- `./operations` is free of eve, at runtime and in its type declarations: nothing it imports loads `eve/*`, the extension's configuration (`extension.ts`, the runtime), session state, or the Vercel Blob store. Findings and their texts, the card types, the sales checks and writes, and the purchase card's figures moved into modules of their own; the eve tools wrap them. A test imports `./operations` with eve made unresolvable.
+- `decide` and `onApprovalCard` no longer run again on eve's recheck of an approved call (eve runs the request policy once more before the call executes). Each call is marked in session state once a person was asked or `decide` approved it; the tool's own checks still run on the recheck and may still refuse.
+- `send_payment_reminder` marks a reminder as waiting only once a person is asked or `decide` approves it — a reminder `decide` refuses no longer shows up as „wartet schon“ in other conversations.
+- `executeApprovedCustomer` takes `shownContactIds` as an array — as `prepareCustomer` returns them — or as a `Set`.
+- Requires `@kevludwig/lexware-office` ^0.4.1 (published as a caret range): a 429 retry wait ends when the request's signal aborts.
+
+### Changed
+
+- Invented example values in the `verkaufsbelege` and `eingangsrechnung` skills and in the `create_customer` and `send_payment_reminder` descriptions.
+- README: the `./operations` example handles a `null` card and shows `withSource` for order confirmations; `decide` may be called twice where session state is unreadable (keep it idempotent); calls `decide` approves reach neither `onApprovalCard` nor `canApprove`.
+
 ## 0.6.0
 
 ### Added
@@ -10,6 +25,7 @@
 ### Changed
 
 - The customer and sales document tools run on these operations; their behaviour is unchanged.
+- `zod` moved from dependencies to `peerDependencies` (`^4.5.4`), so the schemas the package exports are built with the consumer's zod. Install it alongside: `npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office zod`.
 - Requires `@kevludwig/lexware-office` 0.4.0.
 
 ## 0.5.0

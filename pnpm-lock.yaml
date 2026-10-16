@@ -36,7 +36,7 @@ importers:
   packages/eve-lexware-office:
     dependencies:
       '@kevludwig/lexware-office':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../lexware-office
       '@vercel/blob':
         specifier: ^2.8.0

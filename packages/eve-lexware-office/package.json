@@ -1,6 +1,6 @@
 {
   "name": "@kevludwig/eve-lexware-office",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "eve": {
     "extension": {
@@ -34,7 +34,7 @@
     "test:update-snapshots": "eve extension build && node --test --experimental-test-module-mocks --test-update-snapshots test/*.test.ts"
   },
   "dependencies": {
-    "@kevludwig/lexware-office": "workspace:*",
+    "@kevludwig/lexware-office": "workspace:^",
     "@vercel/blob": "^2.8.0"
   },
   "devDependencies": {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+### Fixed
+
+- The wait between 429 retries ends as soon as the request's `signal` aborts, and the request rejects with the signal's reason — before, a cancelled call slept out `Retry-After` (up to 10 s per retry) first.
+
 ## 0.4.0
 
 ### Changed
