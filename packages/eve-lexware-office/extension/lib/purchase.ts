@@ -33,6 +33,7 @@ import {
   type TaxGroupInput,
 } from "./purchase-figures";
 import { client } from "./runtime";
+import { settledOf } from "./state";
 
 export * from "./purchase-figures";
 
@@ -98,6 +99,8 @@ export interface ApprovedPurchaseTarget {
 const approvedTargets = defineState<Record<string, ApprovedPurchaseTarget>>("purchase-targets", () => ({}));
 
 export function rememberPurchaseTarget(callId: string, target: ApprovedPurchaseTarget): void {
+  // A recheck must not rebind supplier and categories the card showed.
+  if (settledOf(callId) !== null) return;
   try {
     approvedTargets.update((all) => ({ ...all, [callId]: target }));
   } catch (error) {

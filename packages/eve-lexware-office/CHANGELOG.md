@@ -15,6 +15,8 @@
 - Invented example values in the `verkaufsbelege` and `eingangsrechnung` skills and in the `create_customer` and `send_payment_reminder` descriptions.
 - README: the `./operations` example handles a `null` card and shows `withSource` for order confirmations; `decide` may be called twice where session state is unreadable (keep it idempotent); calls `decide` approves reach neither `onApprovalCard` nor `canApprove`.
 
+- A recheck of an approved call (eve runs the request policy again) no longer overwrites the findings, shown contacts and bound targets of the card: a duplicate or similar contact that appeared between card and click still stops the write, and a payment reminder stays bound to the address the card showed.
+
 ## 0.6.0
 
 ### Added

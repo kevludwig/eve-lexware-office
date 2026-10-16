@@ -10,6 +10,7 @@
 import { defineState } from "eve/context";
 
 import type { Finding } from "./card-types";
+import { settledOf } from "./state";
 import { describeWarning, type Warning } from "./warnings";
 
 export { describeWarning, isCorrectable, type Warning } from "./warnings";
@@ -20,6 +21,8 @@ const warnings = defineState<Record<string, Warning[]>>("warnings", () => ({}));
 const rejected = defineState<Record<string, true>>("rejected-signatures", () => ({}));
 
 export function saveWarnings(callId: string, list: Warning[]): void {
+  // On eve's recheck the findings stay those the card showed: wasShownOnCard compares a new duplicate against them.
+  if (settledOf(callId) !== null) return;
   try {
     warnings.update((all) => ({ ...all, [callId]: list }));
   } catch (error) {

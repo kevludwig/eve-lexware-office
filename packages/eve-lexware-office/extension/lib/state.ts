@@ -13,6 +13,8 @@ const shownContacts = defineState<Record<string, string[]>>("shown-contacts", ()
 const reminderTargets = defineState<Record<string, ReminderTarget>>("reminder-targets", () => ({}));
 
 export function rememberShownContacts(callId: string, ids: string[]): void {
+  // On eve's recheck of an approved call the card's state must stay as shown: the "unseen ⇒ stop" checks compare against it.
+  if (settledOf(callId) !== null) return;
   try {
     shownContacts.update((all) => ({ ...all, [callId]: ids }));
   } catch (error) {
@@ -29,6 +31,8 @@ export function shownContactsOf(callId: string): Set<string> {
 }
 
 export function bindReminderTarget(callId: string, target: ReminderTarget): void {
+  // The approval was bound to the target the card showed — a recheck must not rebind it.
+  if (settledOf(callId) !== null) return;
   try {
     reminderTargets.update((all) => ({ ...all, [callId]: target }));
   } catch (error) {

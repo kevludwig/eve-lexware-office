@@ -7,7 +7,7 @@ const { decideApproval } = await import("../dist/extension/lib/approver.mjs");
 type Person = { authenticator: string; issuer?: string; principalType: string; principalId: string };
 
 const person = (principalId: string): Person => ({ authenticator: "test", principalType: "user", principalId });
-const owner = person("anna");
+const owner = person("ada");
 const other = person("ben");
 
 function context(
@@ -85,8 +85,8 @@ describe("canApprove", () => {
   });
 
   it("still takes a canApprove that reads only the responder", async () => {
-    const onlyAnna = (responder: Person) => responder.principalId === "anna";
-    assert.equal((await decideApproval(onlyAnna, context(owner, other))).status, "allowed");
-    assert.equal((await decideApproval(onlyAnna, context(other, owner))).status, "rejected");
+    const onlyAda = (responder: Person) => responder.principalId === "ada";
+    assert.equal((await decideApproval(onlyAda, context(owner, other))).status, "allowed");
+    assert.equal((await decideApproval(onlyAda, context(other, owner))).status, "rejected");
   });
 });

@@ -304,10 +304,10 @@ describe("written documents", () => {
     assert.equal(body.lineItems[4]!.optional, true);
     assert.equal(body.introduction, "Ausgangslage");
     assert.equal(body.remark, "Bedingungen");
-    assert.equal(result.netTotal, 1360);
+    assert.equal(result.netTotal, 1000);
     assert.equal(result.positions, 2);
     assert.equal(result.optionalPositions, 1);
-    assert.equal(result.optionalNetTotal, 149);
+    assert.equal(result.optionalNetTotal, 50);
   });
 
   it("creates a quotation as a draft on request", async () => {
@@ -332,7 +332,7 @@ describe("written documents", () => {
     useApi(
       customer,
       on("GET", /^\/voucherlist$/, () => ({ content: [{ id: "q-1", voucherNumber: "AG2026-0001", voucherDate: "2026-10-01", voucherStatus: "draft" }] })),
-      quotation([{ net: 400 }, { net: 160, quantity: 6 }]),
+      quotation([{ net: 400 }, { net: 100, quantity: 6 }]),
     );
     const warnings = await runSalesPreflight("quotation", { customer_number: 10001, items: written });
 
@@ -350,7 +350,7 @@ describe("written documents", () => {
         lineItems: [
           { type: "text", name: "Teil 1" },
           { type: "custom", name: "A", quantity: 2, unitName: "Tag", unitPrice: { netAmount: 1200, taxRatePercentage: 19 } },
-          { type: "custom", name: "B", quantity: 1, unitName: "Monat", unitPrice: { netAmount: 149, taxRatePercentage: 19 }, optional: true },
+          { type: "custom", name: "B", quantity: 1, unitName: "Monat", unitPrice: { netAmount: 50, taxRatePercentage: 19 }, optional: true },
         ],
       })),
     );
@@ -372,7 +372,7 @@ describe("written documents", () => {
       address: { contactId: "c-1", name: "Beispiel GmbH" },
       lineItems: [
         { type: "custom", name: "A", quantity: 2, unitName: "Tag", unitPrice: { netAmount: 1200, taxRatePercentage: 19 } },
-        { type: "custom", name: "B", quantity: 1, unitName: "Monat", unitPrice: { netAmount: 149, taxRatePercentage: 19 }, optional: true },
+        { type: "custom", name: "B", quantity: 1, unitName: "Monat", unitPrice: { netAmount: 50, taxRatePercentage: 19 }, optional: true },
       ],
     }));
     const input = { customer_number: 10001, items, source_document_id: "3f0ef2e1-5f2b-4b44-9f0f-3b4bd7f0f0aa", source_document_type: "quotation" as const };

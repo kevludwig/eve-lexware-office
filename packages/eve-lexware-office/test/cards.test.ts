@@ -69,7 +69,7 @@ describe("approvalCard", () => {
       items: [
         { type: "text", name: "Teil 1: Festpreis", description: "Leistungen mit festem Umfang auf Basis der genannten Annahmen und zwei Korrekturschleifen." },
         { ...items[0], description: "**Enthalten:**\n- Workshop vor Ort\n- Protokoll" },
-        { name: "Wartung", quantity: 1, unit: "Monat", net_price: 149, tax_rate: 19, optional: true },
+        { name: "Wartung", quantity: 1, unit: "Monat", net_price: 50, tax_rate: 19, optional: true },
         items[1],
       ],
       introduction: "Ausgangslage",
@@ -77,14 +77,14 @@ describe("approvalCard", () => {
 
     assert.equal(card.subtitle, "2 Positionen · 2.550,00 EUR netto · 1 optional");
     assert.equal(factOf(card, "Netto"), "2.550,00 EUR");
-    assert.equal(factOf(card, "Optional"), "1 Pos. · 149,00 EUR netto, nicht in der Summe");
+    assert.equal(factOf(card, "Optional"), "1 Pos. · 50,00 EUR netto, nicht in der Summe");
     assert.equal(factOf(card, "Einleitung"), "eigener Text (12 Zeichen)");
     assert.equal(factOf(card, "Schlussnotiz"), "Standard aus Lexware Office");
     const titles = card.facts.map((fact) => fact.title);
     assert.deepEqual(titles.slice(titles.indexOf("Schlussnotiz") + 1), ["▸ Teil 1: Festpreis", "1. Workshop-Tag", "2. Anreisepauschale", "Optional 3. Wartung"]);
     assert.equal(factOf(card, "▸ Teil 1: Festpreis"), "Leistungen mit festem Umfang auf Basis der genannten Annahm…");
     assert.equal(factOf(card, "1. Workshop-Tag"), "2 Tag × 1.200,00 EUR · Enthalten:");
-    assert.equal(factOf(card, "Optional 3. Wartung"), "1 Monat × 149,00 EUR");
+    assert.equal(factOf(card, "Optional 3. Wartung"), "1 Monat × 50,00 EUR");
   });
 
   it("stays within the card budget with 300 long positions", () => {

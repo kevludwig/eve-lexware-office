@@ -330,14 +330,14 @@ describe("sales documents", () => {
         lineItems: [
           { type: "text", name: "Teil 1" },
           { type: "custom", name: "A", quantity: 1, unitName: "Stück", unitPrice: { netAmount: 400, taxRatePercentage: 19 }, optional: false },
-          { type: "custom", name: "B", description: "laufend", quantity: 1, unitName: "Monat", unitPrice: { netAmount: 149, taxRatePercentage: 19 }, optional: true },
+          { type: "custom", name: "B", description: "laufend", quantity: 1, unitName: "Monat", unitPrice: { netAmount: 50, taxRatePercentage: 19 }, optional: true },
         ],
       })),
     );
     const detail = await getSalesDocument(client, "quotation", "q1");
     assert.equal(detail.lineItemsNet, 400);
     assert.deepEqual(detail.lineItems.map((item) => item.name), ["A"]);
-    assert.deepEqual(detail.optionalItems, [{ name: "B", description: "laufend", quantity: 1, unit: "Monat", netPrice: 149, taxRate: 19, optional: true }]);
+    assert.deepEqual(detail.optionalItems, [{ name: "B", description: "laufend", quantity: 1, unit: "Monat", netPrice: 50, taxRate: 19, optional: true }]);
     assert.equal(detail.hasOptionalOrAlternative, true);
   });
 
