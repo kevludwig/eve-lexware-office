@@ -1,6 +1,7 @@
 /**
  * The approval cards of this extension's writing tools, built from the tool
- * input and the findings its approval stored. Channels only render them.
+ * input and the findings of its checks. Channels only render them. Pure: the
+ * card of a call in eve's session is ./call-card.ts.
  */
 
 import { countsToTotal, daysSince, isPricedLine, isVatFreeTaxType, lineNet, netTotal, round2, type LineItem, type PricedLineItem } from "@kevludwig/lexware-office";
@@ -8,8 +9,8 @@ import { countsToTotal, daysSince, isPricedLine, isVatFreeTaxType, lineNet, netT
 import { eur, shortDate } from "./format";
 import { purchaseCard } from "./purchase-card";
 import { TAX_TYPE_LABEL, berlinToday, paymentOf, shippingOf, toLineItems, validUntilOf, type SalesInput } from "./sales";
-import { describeWarning, warningsOf, type Warning } from "./findings";
-import type { ApprovalCard } from "./types";
+import type { ApprovalCard } from "./card-types";
+import { describeWarning, type Warning } from "./warnings";
 
 /** `reserved`: characters the findings already take on the card. */
 type Builder = (input: Record<string, unknown>, reserved: number) => Omit<ApprovalCard, "tool" | "findings">;
@@ -262,11 +263,6 @@ const BUILDERS: Record<string, Builder> = {
 export function ownTool(name: string): string | null {
   const local = name.includes("__") ? name.slice(name.lastIndexOf("__") + 2) : name;
   return local in BUILDERS ? local : null;
-}
-
-/** The card of a call, with the findings its checks saved in the session. */
-export function approvalCard(toolName: string, callId: string, input: unknown): ApprovalCard | null {
-  return buildCard(toolName, input, warningsOf(callId));
 }
 
 /** The card for a tool's input and the findings of its checks — no eve, e.g. for an approval page. */

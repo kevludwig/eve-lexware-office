@@ -15,11 +15,11 @@ const overdue = (dueDate: string, extra: Record<string, unknown> = {}) => [
     content: [
       {
         id: "inv-1",
-        voucherNumber: "RE20260042",
+        voucherNumber: "RE2026-0042",
         voucherDate: daysAgo(40),
         dueDate,
         contactId: "c-1",
-        contactName: "Nordlicht Consulting GmbH",
+        contactName: "Beispiel GmbH",
         openAmount: 1190,
         currency: "EUR",
         voucherStatus: "overdue",
@@ -28,7 +28,7 @@ const overdue = (dueDate: string, extra: Record<string, unknown> = {}) => [
     ],
     totalPages: 1,
   })),
-  on("GET", /^\/contacts\//, () => ({ id: "c-1", company: { name: "Nordlicht Consulting GmbH" }, emailAddresses: { business: ["rechnung@nordlicht.example"] } })),
+  on("GET", /^\/contacts\//, () => ({ id: "c-1", company: { name: "Beispiel GmbH" }, emailAddresses: { business: ["rechnung@beispiel.example"] } })),
 ];
 
 const run = () => duePaymentReminders.execute({}, { abortSignal: undefined }) as Promise<Record<string, any>>;
@@ -41,7 +41,7 @@ describe("due_payment_reminders", () => {
     assert.equal(result.due.length, 1);
     assert.deepEqual(
       { ...result.due[0], days_overdue: undefined },
-      { invoice_id: "inv-1", voucher_number: "RE20260042", customer_name: "Nordlicht Consulting GmbH", open_amount: 1190, due_date: daysAgo(10), days_overdue: undefined },
+      { invoice_id: "inv-1", voucher_number: "RE2026-0042", customer_name: "Beispiel GmbH", open_amount: 1190, due_date: daysAgo(10), days_overdue: undefined },
     );
     assert.equal(result.due[0].days_overdue, 10);
     assert.equal(result.test_mode, true);
@@ -69,7 +69,7 @@ describe("due_payment_reminders", () => {
 
   it("holds an invoice that was already reminded", async () => {
     useApi(...overdue(daysAgo(10)));
-    await ledger().write({ invoiceId: "inv-1", voucherNumber: "RE20260042", status: "sent" });
+    await ledger().write({ invoiceId: "inv-1", voucherNumber: "RE2026-0042", status: "sent" });
     const result = await run();
 
     assert.equal(result.due.length, 0);
@@ -78,7 +78,7 @@ describe("due_payment_reminders", () => {
 
   it("holds a reminder that waits for approval", async () => {
     useApi(...overdue(daysAgo(10)));
-    await ledger().markPending({ id: "inv-1", voucherNumber: "RE20260042" }, "session-1");
+    await ledger().markPending({ id: "inv-1", voucherNumber: "RE2026-0042" }, "session-1");
     const result = await run();
 
     assert.equal(result.due.length, 0);
@@ -88,7 +88,7 @@ describe("due_payment_reminders", () => {
   it("holds a customer without an email address", async () => {
     useApi(
       ...overdue(daysAgo(10)).slice(0, 1),
-      on("GET", /^\/contacts\//, () => ({ id: "c-1", company: { name: "Nordlicht Consulting GmbH" } })),
+      on("GET", /^\/contacts\//, () => ({ id: "c-1", company: { name: "Beispiel GmbH" } })),
     );
     const result = await run();
 

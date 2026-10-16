@@ -12,7 +12,7 @@ export default defineTool({
     "Legt einen neuen Kunden in Lexware Office an. Pflicht sind Name (Firma oder Person) UND die Rechnungsadresse " +
     "(Straße, PLZ, Ort) — fehlt die Adresse, frage sie zuerst beim Nutzer ab. E-Mail und Telefon sind optional. " +
     "Prüfe vorher mit dem Lese-Tool (/contacts?name=…), ob der Kunde schon existiert — Lexware sucht erst ab 3 Zeichen; " +
-    "kürzere Namen (z. B. „AB“) sind als Kundenname erlaubt, dann ohne Vorabsuche direkt dieses Tool aufrufen. Legt erst nach Freigabe an.",
+    "kürzere Namen (z. B. „XY“) sind als Kundenname erlaubt, dann ohne Vorabsuche direkt dieses Tool aufrufen. Legt erst nach Freigabe an.",
   inputSchema: customerInputSchema,
 
   approval: {

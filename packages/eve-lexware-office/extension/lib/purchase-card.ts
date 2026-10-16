@@ -1,8 +1,8 @@
 /** The purchase invoice on the approval card — from the tool input; the findings come from the checks. */
 
 import { eur } from "./format";
-import { bookedGroupsOf, invoiceCurrencyOf, isForeignCurrency, totalsOf, type PurchaseInput } from "./purchase";
-import type { ApprovalCard } from "./types";
+import { bookedGroupsOf, invoiceCurrencyOf, isForeignCurrency, totalsOf, type PurchaseInput } from "./purchase-figures";
+import type { ApprovalCard } from "./card-types";
 
 const basename = (path: string) => path.split("/").pop() || path;
 

@@ -16,6 +16,8 @@ mock.module(new URL("../dist/extension/lib/state.mjs", import.meta.url).href, {
     boundReminderTarget: (callId: string) => targets.get(callId) ?? null,
     rememberShownContacts: () => {},
     shownContactsOf: () => new Set(),
+    rememberSettled: () => {},
+    settledOf: () => null,
   },
 });
 
@@ -23,14 +25,14 @@ const { default: sendPaymentReminder } = await import("../dist/extension/tools/s
 
 const target: ReminderTarget = {
   invoiceId: "inv-1",
-  voucherNumber: "RE20260042",
+  voucherNumber: "RE2026-0042",
   voucherDate: "2026-08-01",
   dueDate: "2026-08-15",
   currency: "EUR",
   to: "owner@example.com",
   cc: [],
   test: true,
-  customer: "rechnung@nordlicht.example",
+  customer: "rechnung@beispiel.example",
 };
 
 let sent: ReminderMail[] = [];
@@ -42,7 +44,7 @@ beforeEach(() => {
   useConfig({ reminders: { mode: "test", ownerEmail: "owner@example.com", sendMail: async (mail: ReminderMail) => void sent.push(mail) } });
   useApi(
     on("GET", /^\/voucherlist$/, () => ({
-      content: [{ id: "inv-1", voucherNumber: "RE20260042", voucherDate: "2026-08-01", dueDate: "2026-08-15", contactId: "c-1", contactName: "Nordlicht Consulting GmbH", openAmount: 1190, currency: "EUR", voucherStatus: "overdue" }],
+      content: [{ id: "inv-1", voucherNumber: "RE2026-0042", voucherDate: "2026-08-01", dueDate: "2026-08-15", contactId: "c-1", contactName: "Beispiel GmbH", openAmount: 1190, currency: "EUR", voucherStatus: "overdue" }],
       totalPages: 1,
     })),
     (call) => (call.method === "GET" && /^\/invoices\/inv-1\/file$/.test(call.path) ? new Response(new Uint8Array([37, 80, 68, 70]), { headers: { "content-type": "application/pdf" } }) : undefined),
@@ -62,7 +64,7 @@ describe("send_payment_reminder", () => {
       to: "owner@example.com",
       cc: [],
       test: true,
-      invoice: "RE20260042",
+      invoice: "RE2026-0042",
       invoiceId: "inv-1",
       amount: 1190,
       currency: "EUR",
@@ -96,7 +98,7 @@ describe("send_payment_reminder", () => {
       to: "owner@example.com",
       cc: [],
       test: true,
-      invoice: "RE20260042",
+      invoice: "RE2026-0042",
       invoiceId: "inv-1",
       amount: null,
       currency: "EUR",

@@ -54,7 +54,7 @@ geschätzter Kurs.
    stehen (`currency`, `total_gross_amount`, `tax_groups`). Nicht umrechnen.
 2. Frage **vor** dem Aufruf mit `ask_question` (Freitext) nach dem abgebuchten
    EUR-Betrag laut Kontoauszug, und nenne dabei den Rechnungsbetrag, z.B.
-   „Die Rechnung lautet auf 51,75 USD. Welcher Betrag wurde laut Kontoauszug in
+   „Die Rechnung lautet auf 100,00 USD. Welcher Betrag wurde laut Kontoauszug in
    EUR abgebucht?"
 3. Die Antwort geht in `bank_statement_eur_amount`. Das Tool rechnet die
    Steuergruppen damit auf EUR um; auf der Karte stehen Rechnungsbetrag,

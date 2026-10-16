@@ -64,7 +64,7 @@ describe("read", () => {
       unitName: "Stück",
       unitPrice: { currency: "EUR", netAmount: 100, taxRatePercentage: 19 },
     }));
-    useApi(on("GET", /^\/quotations\//, () => ({ id: "q1", voucherNumber: "AG2026001", lineItems })));
+    useApi(on("GET", /^\/quotations\//, () => ({ id: "q1", voucherNumber: "AG2026-0001", lineItems })));
 
     const result = await run("/quotations/3f0ef2e1-5f2b-4b44-9f0f-3b4bd7f0f0aa");
 

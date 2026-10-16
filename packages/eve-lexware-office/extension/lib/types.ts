@@ -1,6 +1,7 @@
 import type { ApprovalContext, ApprovalResponseContext } from "eve/tools/approval";
 
-import type { Warning } from "./findings";
+import type { Finding } from "./card-types";
+import type { Warning } from "./warnings";
 
 /** Whoever answers an approval (approve or cancel), as the channel authenticated them. */
 export type Responder = ApprovalResponseContext["response"]["principal"];
@@ -13,26 +14,7 @@ export type Responder = ApprovalResponseContext["response"]["principal"];
  */
 export type CanApprove = (responder: Responder, context: ApprovalResponseContext) => boolean | Promise<boolean>;
 
-/** One line of findings on a card: "⚠ " in front of the title marks a warning. */
-export interface Finding {
-  title: string;
-  value: string;
-}
-
-/**
- * What a writing tool is about to do, as a card any channel can render: a
- * title, a one-line subtitle, key facts, an optional note, and the findings
- * of its checks.
- */
-export interface ApprovalCard {
-  /** The tool's own name, without the mount's namespace. */
-  tool: string;
-  title: string;
-  subtitle?: string;
-  facts: { title: string; value: string }[];
-  note?: string;
-  findings: Finding[];
-}
+export type { ApprovalCard, Finding } from "./card-types";
 
 /** A second source for attachments eve staged under /workspace/.eve/attachments/ (before eve 0.70.2: /workspace/attachments/). */
 export interface AttachmentFallback {

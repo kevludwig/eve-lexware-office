@@ -8,7 +8,7 @@
 import { createCustomer, describeError, findContactsByName, MIN_NAME_SEARCH_LENGTH, type LexwareClient } from "@kevludwig/lexware-office";
 import { z } from "zod";
 
-import type { Warning } from "./findings";
+import type { Warning } from "./warnings";
 import type { Journal } from "./journal-store";
 
 export const customerInputSchema = z
@@ -62,12 +62,21 @@ export async function prepareCustomer(api: LexwareClient, input: Partial<Custome
   }
 }
 
+const isSet = (ids: ReadonlySet<string> | readonly string[]): ids is ReadonlySet<string> => typeof (ids as ReadonlySet<string>).has === "function";
+
 /** Creates the approved customer. `id` keys the journal: a replay does not create twice. */
 export async function executeApprovedCustomer(
   ops: { client: LexwareClient; journal: Journal },
   input: CustomerInput,
-  approved: { id: string; shownContactIds: ReadonlySet<string>; signal?: AbortSignal },
+  approved: {
+    id: string;
+    /** The similar contacts the card showed: `prepareCustomer`'s `shownContactIds` as they are (an array), or a Set. */
+    shownContactIds: ReadonlySet<string> | readonly string[];
+    signal?: AbortSignal;
+  },
 ): Promise<Record<string, unknown>> {
+  const ids = approved.shownContactIds;
+  const shown: ReadonlySet<string> = isSet(ids) ? ids : new Set(ids);
   const journal = await ops.journal.read("customer", approved.id);
   if (journal?.resourceId) {
     return { contactId: journal.resourceId, note: "Wiederaufnahme: Der Kunde war bereits angelegt — nichts doppelt erstellt." };
@@ -77,7 +86,7 @@ export async function executeApprovedCustomer(
   // not show stops the creation; those it showed were approved knowingly.
   try {
     const unseen = (await findContactsByName(ops.client, customerNameOf(input), { size: 5, signal: approved.signal })).filter(
-      (contact) => !approved.shownContactIds.has(contact.id),
+      (contact) => !shown.has(contact.id),
     );
     if (unseen.length > 0) {
       throw new Error(

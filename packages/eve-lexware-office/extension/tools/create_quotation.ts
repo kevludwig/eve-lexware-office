@@ -1,7 +1,7 @@
 import { defineTool } from "eve/tools";
 
 import { approverPolicy } from "../lib/runtime";
-import { executeSalesDocument, salesApproval } from "../lib/sales";
+import { executeSalesDocument, salesApproval } from "../lib/sales-eve";
 import { quotationDescription, quotationInputSchema } from "../lib/sales-tools";
 import { withCard } from "../lib/with-card";
 

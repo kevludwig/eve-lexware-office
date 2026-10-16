@@ -41,10 +41,8 @@ import {
 } from "@kevludwig/lexware-office";
 import { z } from "zod";
 
-import { describeWarning, notesOf, saveWarnings, wasShownOnCard, type Warning } from "./findings";
-import { runtimeJournal } from "./journal";
 import type { Journal } from "./journal-store";
-import { client } from "./runtime";
+import { describeWarning, type Warning } from "./warnings";
 
 export const DOCUMENT_LABEL: Record<SalesDocumentKind, string> = {
   quotation: "Angebot",
@@ -587,11 +585,6 @@ export async function resolveCustomer(api: LexwareClient, input: SalesInput, sig
   return { contact: null, warnings: [{ kind: "sales-contact", reason: "weder Kundennummer noch contact_id angegeben" }] };
 }
 
-/** The checks with the mount's client — for the eve tools. */
-export function runSalesPreflight(kind: SalesDocumentKind, input: SalesInput, signal?: AbortSignal): Promise<Warning[]> {
-  return prepareSalesDocument(client(), kind, input, signal);
-}
-
 /**
  * Customer, duplicates, the source document and the document settings —
  * what the card shows before a person approves. Network errors become
@@ -770,35 +763,6 @@ async function checkSource(api: LexwareClient, target: SalesDocumentKind, input:
 /** Lexware Office refuses an order confirmation pursued from a quotation with optional or alternative lines (406). */
 function chainImpossible(target: SalesDocumentKind, source: SalesDocumentKind, detail: { hasOptionalOrAlternative: boolean }): boolean {
   return target === "order-confirmation" && source === "quotation" && detail.hasOptionalOrAlternative;
-}
-
-/** The approval policy of a sales tool: checks to state, then the card decides. */
-export function salesApproval(kind: SalesDocumentKind, normalize: (input: SalesInput) => SalesInput = (input) => input) {
-  return async (ctx: { toolInput?: unknown; callId: string; abortSignal?: AbortSignal }) => {
-    const input = ctx.toolInput as SalesInput | undefined;
-    if (!input?.items?.length) return "user-approval" as const;
-    saveWarnings(ctx.callId, await runSalesPreflight(kind, normalize(input), ctx.abortSignal));
-    return "user-approval" as const;
-  };
-}
-
-/**
- * Creates the document: quotations and order confirmations finalized (they
- * get their number now) unless `draft` asks otherwise, invoices always as
- * drafts — finalized and sent in Lexware Office. A replay of the same call does not create twice; a document that
- * appeared between card and click stops the write.
- */
-export function executeSalesDocument(
-  kind: SalesDocumentKind,
-  input: SalesInput,
-  ctx: { callId: string; abortSignal?: AbortSignal },
-): Promise<Record<string, unknown>> {
-  return executeApprovedSalesDocument({ client: client(), journal: runtimeJournal }, kind, input, {
-    id: ctx.callId,
-    shownOnCard: (url) => wasShownOnCard(ctx.callId, url),
-    notes: () => notesOf(ctx.callId),
-    signal: ctx.abortSignal,
-  });
 }
 
 /** What an approved write needs besides the input: where it runs, and what the card showed. */

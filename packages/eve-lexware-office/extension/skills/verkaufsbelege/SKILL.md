@@ -41,12 +41,12 @@ Bezieht sich der Auftrag auf einen bestehenden Beleg, such ihn — frag nicht na
 der Nummer, wenn du sie selbst finden kannst:
 
 1. Kunden auflösen (siehe oben). Nennt der Auftrag statt eines Kunden ein
-   Projekt („Nordlicht"), suche zuerst den Kontakt mit diesem Namen.
+   Projekt („Beispiel"), suche zuerst den Kontakt mit diesem Namen.
 2. Mit dem Lese-Tool (`read`) `/voucherlist` abfragen, mit
    `{ voucherType: "quotation", voucherStatus: "draft,open,accepted", contactId: "…", sort: "voucherDate,DESC", size: 10 }`
    — für ABs `voucherType: "orderconfirmation"`, Status `"draft,open"`.
 3. **Genau ein plausibler Treffer**: verwenden und ansagen („Ich nehme Angebot
-   AG20260001 vom 10.08., 3.034,50 EUR"). **Mehrere**: mit `ask_question`
+   AG2026-0001 vom 01.01., 1.000,00 EUR"). **Mehrere**: mit `ask_question`
    wählen lassen — je Option Belegnummer, Datum, Betrag. **Keiner**: sagen und
    fragen, ob der Beleg ohne Bezug entstehen soll.
 4. Den Beleg mit dem Lese-Tool (`/quotations/{id}` bzw.
@@ -110,7 +110,7 @@ Liegt ein ausformuliertes Angebot vor (Dokument, Entwurf im Chat), bilde es
   enthalten“, Annahmen — wörtlich aus der Vorlage. Zeilenumbrüche als `\n`,
   Markdown: `**fett**`, `__kursiv__`, Listen mit `- `. Höchstens 2000 Zeichen;
   ist ein Text länger, kürze nicht still — sag, welche Position, und frag, was
-  wegfallen darf. Die Preiszeile der Vorlage („Festpreis · 400,00 €“) gehört
+  wegfallen darf. Die Preiszeile der Vorlage („Festpreis · 100,00 €“) gehört
   nicht in die Beschreibung, sie steht in Menge und Preis.
 - **Textpositionen** (`{ type: "text", name, description? }`) für
   Zwischenüberschriften wie „Teil 1: Festpreis“ und für erklärende Absätze

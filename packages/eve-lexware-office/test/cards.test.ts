@@ -5,7 +5,8 @@ import { describe, it } from "node:test";
 
 import "./harness.ts";
 
-const { CARD_TEXT_BUDGET, approvalCard, ownTool } = await import("../dist/extension/lib/cards.mjs");
+const { CARD_TEXT_BUDGET, ownTool } = await import("../dist/extension/lib/cards.mjs");
+const { approvalCard } = await import("../dist/extension/lib/call-card.mjs");
 
 const factOf = (card: { facts: { title: string; value: string }[] }, title: string) => card.facts.find((fact) => fact.title === title)?.value;
 
@@ -174,29 +175,29 @@ describe("approvalCard", () => {
 
   it("shows name and address of a new customer", () => {
     const card = approvalCard("lexware__create_customer", "call", {
-      company_name: "Nordlicht Consulting GmbH",
-      street: "Deichstraße 12",
-      zip: "20459",
-      city: "Hamburg",
+      company_name: "Beispiel GmbH",
+      street: "Musterstraße 1",
+      zip: "12345",
+      city: "Musterstadt",
     })!;
 
-    assert.equal(card.subtitle, "Nordlicht Consulting GmbH");
-    assert.equal(factOf(card, "Adresse"), "Deichstraße 12, 20459 Hamburg");
+    assert.equal(card.subtitle, "Beispiel GmbH");
+    assert.equal(factOf(card, "Adresse"), "Musterstraße 1, 12345 Musterstadt");
     assert.equal(factOf(card, "E-Mail"), undefined);
   });
 
   it("shows invoice, amount and days overdue on a payment reminder", () => {
     const due = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
     const card = approvalCard("lexware__send_payment_reminder", "call", {
-      voucher_number: "RE20260042",
-      customer_name: "Nordlicht Consulting GmbH",
+      voucher_number: "RE2026-0042",
+      customer_name: "Beispiel GmbH",
       open_amount: 1190,
       due_date: due,
     })!;
 
-    assert.equal(card.subtitle, "Nordlicht Consulting GmbH · Rechnung RE20260042 · 1.190,00 EUR offen");
+    assert.equal(card.subtitle, "Beispiel GmbH · Rechnung RE2026-0042 · 1.190,00 EUR offen");
     assert.match(factOf(card, "Fällig seit")!, /\(5 Tage\)$/);
-    assert.equal(factOf(card, "Anhang"), "RE20260042.pdf");
+    assert.equal(factOf(card, "Anhang"), "RE2026-0042.pdf");
   });
 });
 

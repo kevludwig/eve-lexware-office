@@ -24,7 +24,7 @@ import { bindReminderTarget, boundReminderTarget } from "../lib/state";
 const inputSchema = z
   .object({
     invoice_id: z.string().uuid().describe("Id der überfälligen Rechnung in Lexware Office"),
-    voucher_number: z.string().trim().min(1).max(50).describe("Rechnungsnummer, z.B. RE20260192"),
+    voucher_number: z.string().trim().min(1).max(50).describe("Rechnungsnummer, z.B. RE2026-0001"),
     customer_name: z.string().trim().min(1).max(255).describe("Kunde laut Lexware Office"),
     open_amount: z.number().positive().describe("Offener Betrag laut Lexware Office"),
     due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Fälligkeitsdatum yyyy-MM-dd laut Lexware Office"),
@@ -143,8 +143,17 @@ export default defineTool({
         customer,
         earlierSentAt: earlier?.status === "sent" ? earlier.at : undefined,
       });
-      if (earlier?.status !== "sent") await ledger().markPending(invoice, ctx.session.id).catch(() => {});
       return "user-approval";
+    }, {
+      // Waiting only once a person sees the card (or decide approved it) — a
+      // reminder decide refuses must not show up as waiting elsewhere.
+      async onProceed(ctx) {
+        const target = boundReminderTarget(ctx.callId);
+        if (!target || target.earlierSentAt) return;
+        await ledger()
+          .markPending({ id: target.invoiceId, voucherNumber: target.voucherNumber }, ctx.session.id)
+          .catch(() => {});
+      },
     }),
     response: approverPolicy,
   },

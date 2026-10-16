@@ -5,11 +5,12 @@ import { describe, it } from "node:test";
 
 import { contact, on, useApi, type Route } from "./harness.ts";
 
-const { executeSalesDocument, isCalendarDate, isDocumentTypeLabel, runSalesPreflight, toLineItems } = await import("../dist/extension/lib/sales.mjs");
+const { isCalendarDate, isDocumentTypeLabel, toLineItems } = await import("../dist/extension/lib/sales.mjs");
+const { executeSalesDocument, runSalesPreflight } = await import("../dist/extension/lib/sales-eve.mjs");
 
 const items = [{ name: "Workshop-Tag", quantity: 2, unit: "Tag", net_price: 1200, tax_rate: 19 }];
 
-const customer = on("GET", /^\/contacts$/, () => ({ content: [contact("c-1", "Nordlicht Consulting GmbH", { customer: { number: 10001 } })] }));
+const customer = on("GET", /^\/contacts$/, () => ({ content: [contact("c-1", "Beispiel GmbH", { customer: { number: 10001 } })] }));
 const noDocuments = on("GET", /^\/voucherlist$/, () => ({ content: [] }));
 
 /** The account's default payment condition, as /payment-conditions lists it. */
@@ -27,8 +28,8 @@ const paymentDefault = (days: number) =>
 const quotation = (lines: { net: number; quantity?: number }[], extra: Record<string, unknown> = {}): Route =>
   on("GET", /^\/quotations\//, () => ({
     id: "q-1",
-    voucherNumber: "AG2026001",
-    address: { contactId: "c-1", name: "Nordlicht Consulting GmbH" },
+    voucherNumber: "AG2026-0001",
+    address: { contactId: "c-1", name: "Beispiel GmbH" },
     lineItems: lines.map((line, index) => ({
       name: `Position ${index}`,
       quantity: line.quantity ?? 1,
@@ -57,7 +58,7 @@ describe("runSalesPreflight", () => {
     useApi(customer, noDocuments, paymentDefault(0));
     const warnings = await runSalesPreflight("quotation", { customer_number: 10001, items });
 
-    assert.deepEqual(warnings[0], { kind: "customer-resolved", name: "Nordlicht Consulting GmbH", number: 10001 });
+    assert.deepEqual(warnings[0], { kind: "customer-resolved", name: "Beispiel GmbH", number: 10001 });
     assert.equal(warnings.length, 2);
   });
 
@@ -79,13 +80,13 @@ describe("runSalesPreflight", () => {
   it("finds a document with the same net total for this customer", async () => {
     useApi(
       customer,
-      on("GET", /^\/voucherlist$/, () => ({ content: [{ id: "q-1", voucherNumber: "AG2026001", voucherDate: "2026-08-10", voucherStatus: "open" }] })),
+      on("GET", /^\/voucherlist$/, () => ({ content: [{ id: "q-1", voucherNumber: "AG2026-0001", voucherDate: "2026-08-10", voucherStatus: "open" }] })),
       quotation([{ net: 1200, quantity: 2 }]),
     );
     const warnings = await runSalesPreflight("quotation", { customer_number: 10001, items });
 
     const duplicate = warnings.find((warning) => warning.kind === "sales-duplicate");
-    assert.equal(duplicate?.voucherNumber, "AG2026001");
+    assert.equal(duplicate?.voucherNumber, "AG2026-0001");
     assert.equal(duplicate?.documentLabel, "Angebot");
   });
 
@@ -99,7 +100,7 @@ describe("runSalesPreflight", () => {
     });
 
     const source = warnings.find((warning) => warning.kind === "source-resolved");
-    assert.equal(source?.sourceLabel, "Angebot AG2026001");
+    assert.equal(source?.sourceLabel, "Angebot AG2026-0001");
     assert.ok(!warnings.some((warning) => warning.kind === "source-mismatch"));
   });
 
@@ -149,12 +150,12 @@ describe("executeSalesDocument", () => {
       customer,
       noDocuments,
       created("quotations"),
-      on("GET", /^\/quotations\//, () => ({ id: "new-1", voucherNumber: "AG2026099", address: { contactId: "c-1", name: "Nordlicht Consulting GmbH" }, lineItems: [] })),
+      on("GET", /^\/quotations\//, () => ({ id: "new-1", voucherNumber: "AG2026-0099", address: { contactId: "c-1", name: "Beispiel GmbH" }, lineItems: [] })),
     );
     const result = await executeSalesDocument("quotation", { customer_number: 10001, items }, { callId: "call-1" });
 
-    assert.equal(result.documentName, "Angebot AG2026099");
-    assert.equal(result.contactName, "Nordlicht Consulting GmbH");
+    assert.equal(result.documentName, "Angebot AG2026-0099");
+    assert.equal(result.contactName, "Beispiel GmbH");
     assert.equal(result.netTotal, 2400);
     assert.equal(api.calls.find((call) => call.method === "POST")?.query.get("finalize"), "true");
   });
@@ -164,7 +165,7 @@ describe("executeSalesDocument", () => {
       customer,
       noDocuments,
       created("invoices"),
-      on("GET", /^\/invoices\//, () => ({ id: "new-1", address: { contactId: "c-1", name: "Nordlicht Consulting GmbH" }, lineItems: [] })),
+      on("GET", /^\/invoices\//, () => ({ id: "new-1", address: { contactId: "c-1", name: "Beispiel GmbH" }, lineItems: [] })),
     );
     await executeSalesDocument("invoice", { customer_number: 10001, items }, { callId: "call-2" });
 
@@ -184,7 +185,7 @@ describe("executeSalesDocument", () => {
           ? Response.json({ message: "precedingSalesVoucherId is not pursuable" }, { status: 406 })
           : Response.json({ id: "new-1" }, { status: 201 });
       },
-      on("GET", /^\/invoices\//, () => ({ id: "new-1", address: { contactId: "c-1", name: "Nordlicht Consulting GmbH" }, lineItems: [] })),
+      on("GET", /^\/invoices\//, () => ({ id: "new-1", address: { contactId: "c-1", name: "Beispiel GmbH" }, lineItems: [] })),
     );
 
     const result = await executeSalesDocument(
@@ -217,7 +218,7 @@ describe("executeSalesDocument", () => {
       customer,
       noDocuments,
       created("quotations"),
-      on("GET", /^\/quotations\//, () => ({ id: "new-1", voucherNumber: "AG2026099", address: { contactId: "c-1", name: "Nordlicht Consulting GmbH" }, lineItems: [] })),
+      on("GET", /^\/quotations\//, () => ({ id: "new-1", voucherNumber: "AG2026-0099", address: { contactId: "c-1", name: "Beispiel GmbH" }, lineItems: [] })),
     );
     const input = { customer_number: 10001, items };
 
@@ -330,12 +331,12 @@ describe("written documents", () => {
   it("checks duplicates on the total that counts", async () => {
     useApi(
       customer,
-      on("GET", /^\/voucherlist$/, () => ({ content: [{ id: "q-1", voucherNumber: "AG2026001", voucherDate: "2026-10-01", voucherStatus: "draft" }] })),
+      on("GET", /^\/voucherlist$/, () => ({ content: [{ id: "q-1", voucherNumber: "AG2026-0001", voucherDate: "2026-10-01", voucherStatus: "draft" }] })),
       quotation([{ net: 400 }, { net: 160, quantity: 6 }]),
     );
     const warnings = await runSalesPreflight("quotation", { customer_number: 10001, items: written });
 
-    assert.equal(warnings.find((warning) => warning.kind === "sales-duplicate")?.voucherNumber, "AG2026001");
+    assert.equal(warnings.find((warning) => warning.kind === "sales-duplicate")?.voucherNumber, "AG2026-0001");
   });
 
   it("compares with the source without its optional lines", async () => {
@@ -344,8 +345,8 @@ describe("written documents", () => {
       noDocuments,
       on("GET", /^\/quotations\//, () => ({
         id: "q-1",
-        voucherNumber: "AG2026001",
-        address: { contactId: "c-1", name: "Nordlicht Consulting GmbH" },
+        voucherNumber: "AG2026-0001",
+        address: { contactId: "c-1", name: "Beispiel GmbH" },
         lineItems: [
           { type: "text", name: "Teil 1" },
           { type: "custom", name: "A", quantity: 2, unitName: "Tag", unitPrice: { netAmount: 1200, taxRatePercentage: 19 } },
@@ -367,8 +368,8 @@ describe("written documents", () => {
   it("creates an order confirmation from a quotation with optional lines without the chain the API refuses", async () => {
     const source = on("GET", /^\/quotations\//, () => ({
       id: "q-1",
-      voucherNumber: "AG2026001",
-      address: { contactId: "c-1", name: "Nordlicht Consulting GmbH" },
+      voucherNumber: "AG2026-0001",
+      address: { contactId: "c-1", name: "Beispiel GmbH" },
       lineItems: [
         { type: "custom", name: "A", quantity: 2, unitName: "Tag", unitPrice: { netAmount: 1200, taxRatePercentage: 19 } },
         { type: "custom", name: "B", quantity: 1, unitName: "Monat", unitPrice: { netAmount: 149, taxRatePercentage: 19 }, optional: true },
@@ -378,7 +379,7 @@ describe("written documents", () => {
 
     useApi(customer, noDocuments, source);
     const warnings = await runSalesPreflight("order-confirmation", input);
-    assert.equal(warnings.find((warning) => warning.kind === "source-chain-impossible")?.sourceLabel, "Angebot AG2026001");
+    assert.equal(warnings.find((warning) => warning.kind === "source-chain-impossible")?.sourceLabel, "Angebot AG2026-0001");
 
     const api = useApi(
       customer,
@@ -443,7 +444,7 @@ describe("document fields", () => {
         total_discount_percent: 5,
         language: "en",
         print_layout: "englisch",
-        title: "Projekt Nordlicht",
+        title: "Projekt Beispiel",
       },
       { callId: "fields-2" },
     );
@@ -461,7 +462,7 @@ describe("document fields", () => {
     assert.deepEqual(body.taxConditions, { taxType: "net" });
     assert.equal(body.language, "en");
     assert.equal(body.printLayoutId, "layout-en");
-    assert.equal(body.title, "Projekt Nordlicht");
+    assert.equal(body.title, "Projekt Beispiel");
   });
 
   it("sends a quotation without shipping conditions, with gross prices, alternatives, an article and its validity", async () => {

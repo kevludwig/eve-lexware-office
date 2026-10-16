@@ -1,6 +1,6 @@
 import { defineHook } from "eve/hooks";
 
-import { approvalCard } from "../lib/cards";
+import { approvalCard } from "../lib/call-card";
 import { config } from "../lib/runtime";
 
 /**

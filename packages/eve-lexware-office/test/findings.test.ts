@@ -9,13 +9,13 @@ const { describeWarning, isCorrectable } = await import("../dist/extension/lib/f
 
 describe("describeWarning", () => {
   it("marks a warning with ⚠ and leaves plain facts unmarked", () => {
-    assert.equal(describeWarning({ kind: "customer-resolved", name: "Nordlicht Consulting GmbH", number: 10001 }).title, "Kunde");
+    assert.equal(describeWarning({ kind: "customer-resolved", name: "Beispiel GmbH", number: 10001 }).title, "Kunde");
     assert.equal(describeWarning({ kind: "sales-contact", reason: "unklar" }).title, "⚠ Kunde");
   });
 
   it("names the customer with the number as the account knows it", () => {
-    const finding = describeWarning({ kind: "customer-resolved", name: "Nordlicht Consulting GmbH", number: 10001 });
-    assert.equal(finding.value, "Nordlicht Consulting GmbH (Nr. 10001)");
+    const finding = describeWarning({ kind: "customer-resolved", name: "Beispiel GmbH", number: 10001 });
+    assert.equal(finding.value, "Beispiel GmbH (Nr. 10001)");
   });
 
   it("puts document, date, status and link into a duplicate", () => {
@@ -23,13 +23,13 @@ describe("describeWarning", () => {
       kind: "sales-duplicate",
       documentLabel: "Auftragsbestätigung",
       url: "https://app.lexware.de/vouchers#!/VoucherDetail/aaaa1111",
-      voucherNumber: "AB20260007",
+      voucherNumber: "AB2026-0007",
       voucherDate: "2026-08-21",
       voucherStatus: "open",
     });
 
     assert.equal(finding.title, "⚠ Dublette");
-    assert.match(finding.value, /AB20260007, 21.8.2026, open/);
+    assert.match(finding.value, /AB2026-0007, 21.8.2026, open/);
     assert.match(finding.value, /aaaa1111$/);
   });
 
@@ -58,7 +58,7 @@ describe("describeWarning", () => {
   });
 
   it("says a copied document loses the source's discount", () => {
-    const finding = describeWarning({ kind: "source-discount", sourceLabel: "Angebot AG2026001", discountAbsolute: 240, sourceNet: 2160 });
+    const finding = describeWarning({ kind: "source-discount", sourceLabel: "Angebot AG2026-0001", discountAbsolute: 240, sourceNet: 2160 });
     assert.match(finding.value, /NICHT/);
     assert.match(finding.value, /240,00 EUR/);
   });

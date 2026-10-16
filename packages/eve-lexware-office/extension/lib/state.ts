@@ -43,3 +43,28 @@ export function boundReminderTarget(callId: string): ReminderTarget | null {
     return null;
   }
 }
+
+/**
+ * What the request policy settled for a call, by tool call id: "ask" once a
+ * person was asked (the card went out), "approve" once `decide` approved it.
+ * eve runs the request policy again before an approved call executes (its
+ * recheck); the marker tells that run apart from the first, without eve's
+ * internal recheck flag.
+ */
+const settled = defineState<Record<string, "ask" | "approve">>("settled-calls", () => ({}));
+
+export function rememberSettled(callId: string, outcome: "ask" | "approve"): void {
+  try {
+    settled.update((all) => ({ ...all, [callId]: outcome }));
+  } catch (error) {
+    console.warn(`[lexware] Cannot store the approval outcome: ${String(error)}`);
+  }
+}
+
+export function settledOf(callId: string): "ask" | "approve" | null {
+  try {
+    return settled.get()[callId] ?? null;
+  } catch {
+    return null;
+  }
+}

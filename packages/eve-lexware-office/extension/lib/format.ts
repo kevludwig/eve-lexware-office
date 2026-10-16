@@ -1,4 +1,4 @@
-/** How amounts and dates read on cards and in answers: „761,60 EUR", „1.9.2026". */
+/** How amounts and dates read on cards and in answers: „1.000,00 EUR", „1.1.2026". */
 
 export function eur(value: number, currency = "EUR"): string {
   return `${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;

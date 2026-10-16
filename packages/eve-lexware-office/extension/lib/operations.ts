@@ -8,12 +8,13 @@
  * the session — the input, the warnings, and what the card showed — until
  * a person approves, then executes with it.
  *
- * Nothing here reads the mount's configuration or eve's session.
+ * Nothing here reads the mount's configuration or eve's session, and nothing
+ * it imports loads eve: it runs where eve is not installed (test/operations-isolated.test.ts).
  */
 
 export { buildCard } from "./cards";
 export { customerInputSchema, executeApprovedCustomer, prepareCustomer, type CustomerInput, type PreparedCustomer } from "./customer";
-export { describeWarning, type Warning } from "./findings";
+export { describeWarning, type Warning } from "./warnings";
 export { journalIn, type Journal, type JournalEntry } from "./journal-store";
 export { readAccount, readDescription, readInputSchema, type ReadInput } from "./read";
 export {
@@ -33,9 +34,9 @@ export {
   quotationInputSchema,
   withSource,
 } from "./sales-tools";
-export type { ApprovalCard, Finding } from "./types";
+export type { ApprovalCard, Finding } from "./card-types";
 
 /** The duplicates a card showed — what an approved sales write may meet without stopping. */
-export function shownDuplicates(warnings: readonly import("./findings").Warning[]): string[] {
+export function shownDuplicates(warnings: readonly import("./warnings").Warning[]): string[] {
   return warnings.flatMap((warning) => (warning.kind === "sales-duplicate" || warning.kind === "voucher-duplicate" ? [warning.url] : []));
 }
