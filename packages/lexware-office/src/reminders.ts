@@ -31,6 +31,64 @@ export interface ReminderPolicy {
   pendingValidHours: number;
   /** A declined reminder stays quiet this many days. Default: 7. */
   declinedQuietDays: number;
+  /**
+   * Whether a day (yyyy-MM-dd) counts as a day by which money can arrive.
+   * Set, a due date on another day moves to the next one that does — as § 193
+   * BGB moves a deadline off weekends and holidays. Not set: due dates count
+   * as they are. `germanPaymentDay` covers weekends and nationwide holidays.
+   */
+  isPaymentDay?: (day: string) => boolean;
+}
+
+/** The day itself, or the next one `isPaymentDay` accepts (at most two weeks on). */
+export function nextPaymentDay(day: string, isPaymentDay?: (day: string) => boolean): string {
+  if (!isPaymentDay) return day;
+  let current = day;
+  for (let step = 0; step < 14 && !isPaymentDay(current); step++) current = addDays(current, 1);
+  return current;
+}
+
+/** Easter Sunday of a year (Gregorian, anonymous algorithm), yyyy-MM-dd. */
+function easterSunday(year: number): string {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const dayOfMonth = ((h + l - 7 * m + 114) % 31) + 1;
+  return `${year}-${String(month).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
+}
+
+/** Germany's nationwide public holidays of a year (yyyy-MM-dd). Regional ones are left to the caller. */
+export function germanNationwideHolidays(year: number): string[] {
+  const easter = easterSunday(year);
+  return [
+    `${year}-01-01`,
+    addDays(easter, -2),
+    addDays(easter, 1),
+    `${year}-05-01`,
+    addDays(easter, 39),
+    addDays(easter, 50),
+    `${year}-10-03`,
+    `${year}-12-25`,
+    `${year}-12-26`,
+  ];
+}
+
+/** A weekday that is no nationwide public holiday in Germany — when banks book. */
+export function germanPaymentDay(day: string): boolean {
+  const date = new Date(`${day.slice(0, 10)}T00:00:00Z`);
+  const weekday = date.getUTCDay();
+  if (weekday === 0 || weekday === 6) return false;
+  return !germanNationwideHolidays(date.getUTCFullYear()).includes(day.slice(0, 10));
 }
 
 export const DEFAULT_REMINDER_POLICY: ReminderPolicy = {
@@ -52,9 +110,10 @@ export function isDueImmediately(invoice: Dated): boolean {
 
 /** The day from which lateness counts (yyyy-MM-dd). */
 export function reminderDueDate(invoice: Dated, policy: ReminderPolicy = DEFAULT_REMINDER_POLICY): string {
-  return isDueImmediately(invoice)
+  const due = isDueImmediately(invoice)
     ? addDays(invoice.voucherDate, policy.immediatePaymentTermDays)
     : invoice.dueDate.slice(0, 10);
+  return nextPaymentDay(due, policy.isPaymentDay);
 }
 
 /** Days past the reminder due date. */

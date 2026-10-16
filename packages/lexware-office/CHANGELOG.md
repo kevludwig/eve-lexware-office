@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+### Added
+
+- `ReminderPolicy.isPaymentDay`: a due date on a day it rejects moves to the next one it accepts (as § 193 BGB moves deadlines off weekends and holidays); reminder days are then counted from there. Not set, nothing changes.
+- `germanPaymentDay` (weekdays without Germany's nationwide public holidays), `germanNationwideHolidays(year)` and `nextPaymentDay`.
+
 ## 0.4.1
 
 ### Fixed

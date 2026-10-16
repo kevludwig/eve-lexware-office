@@ -90,7 +90,7 @@ The ledger needs somewhere to keep one small JSON record per invoice. `JsonStore
 
 ## Tests
 
-`npm test` runs 56 tests against a fake API — no account, no network. `test/fake-api.ts` shows the pattern: routes answer by method and path, and every call is recorded.
+`npm test` runs 59 tests against a fake API — no account, no network. `test/fake-api.ts` shows the pattern: routes answer by method and path, and every call is recorded.
 
 ## Not affiliated with Lexware
 
