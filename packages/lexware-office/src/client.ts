@@ -3,9 +3,10 @@
  *
  * One client per account: the API allows two requests per second for the
  * whole account, so every call of a client goes through one serial queue with
- * a minimum spacing. A single retry on 429 covers the case that something else
- * uses the same account at the same time. Share one client instead of creating
- * one per call — separate clients do not know about each other's requests.
+ * a minimum spacing. Retries on 429 — honouring Retry-After — cover other
+ * clients on the same account: serverless instances, a second app. Share one
+ * client per process; separate clients do not know about each other's
+ * requests, the retries only soften that.
  */
 
 export const DEFAULT_BASE_URL = "https://api.lexware.io/v1";
@@ -30,8 +31,10 @@ export interface LexwareClientOptions {
    * a file that arrives anyway. Default: 120 000.
    */
   uploadTimeoutMs?: number;
-  /** Wait before retrying a request answered with 429, in ms. Default: 1 000. */
+  /** Wait before retrying a request answered with 429 without Retry-After, in ms; grows with each retry. Default: 1 000. */
   rateLimitBackoffMs?: number;
+  /** How often a request answered with 429 is sent again. Default: 3. */
+  rateLimitRetries?: number;
   /** A fetch implementation, e.g. for tests. Default: the global fetch. */
   fetch?: typeof fetch;
 }
@@ -103,6 +106,15 @@ export function query(params: Record<string, string | number | boolean | undefin
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The server's Retry-After in ms (seconds or an HTTP date), capped at 10 s; null without one. */
+function retryAfterMs(response: Response): number | null {
+  const header = response.headers.get("retry-after")?.trim();
+  if (!header) return null;
+  const seconds = Number(header);
+  const ms = Number.isFinite(seconds) ? seconds * 1_000 : Date.parse(header) - Date.now();
+  return Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 10_000) : null;
+}
+
 export function createLexwareClient(options: LexwareClientOptions): LexwareClient {
   if (!options.apiKey?.trim()) throw new Error("Lexware Office: apiKey fehlt.");
 
@@ -112,6 +124,7 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
   const timeoutMs = options.timeoutMs ?? 20_000;
   const uploadTimeoutMs = options.uploadTimeoutMs ?? 120_000;
   const backoffMs = options.rateLimitBackoffMs ?? 1_000;
+  const retries = options.rateLimitRetries ?? 3;
   const fetchImpl = options.fetch ?? fetch;
 
   // The queue: each request waits for the previous one to start plus the
@@ -135,9 +148,9 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
   }
 
   /**
-   * One request, queued, with a single retry on 429 — then the API
-   * demonstrably did not run it. A transport error after a POST is never
-   * retried: the voucher may well exist already.
+   * One request, queued, retried on 429 — then the API demonstrably did not
+   * run it. A transport error after a POST is never retried: the voucher may
+   * well exist already.
    */
   async function send(path: string, init: RequestInit, limitMs = timeoutMs): Promise<Response> {
     const method = init.method ?? "GET";
@@ -152,8 +165,9 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
       });
 
     let response = await fire();
-    if (response.status === 429) {
-      await sleep(backoffMs);
+    for (let attempt = 1; response.status === 429 && attempt <= retries; attempt++) {
+      await response.body?.cancel().catch(() => undefined);
+      await sleep(retryAfterMs(response) ?? backoffMs * attempt);
       response = await fire();
     }
     if (!response.ok) {

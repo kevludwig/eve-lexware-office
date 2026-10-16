@@ -1,67 +1,13 @@
 import { defineTool } from "eve/tools";
-import { z } from "zod";
 
 import { approverPolicy } from "../lib/runtime";
+import { executeSalesDocument, salesApproval } from "../lib/sales";
+import { orderConfirmationDescription, orderConfirmationInputSchema, withSource } from "../lib/sales-tools";
 import { withCard } from "../lib/with-card";
-import {
-  COUNTING_LINE_MESSAGE,
-  MAX_LINE_ITEMS,
-  customerFields,
-  deliveryTermsField,
-  documentFields,
-  documentTextFields,
-  draftField,
-  executeSalesDocument,
-  hasCountingLine,
-  lineItemSchema,
-  salesApproval,
-  salesRefinement,
-  shippingFields,
-  titleSchema,
-  type SalesInput,
-} from "../lib/sales";
-
-const inputSchema = z
-  .object({
-    ...customerFields,
-    items: z
-      .array(lineItemSchema({ allowOptional: false }))
-      .min(1)
-      .max(MAX_LINE_ITEMS)
-      .refine(hasCountingLine, { message: COUNTING_LINE_MESSAGE })
-      .describe(
-        "Alle Positionen der AB — beim Ableiten aus einem Angebot dessen nicht-optionale Positionen (per Lese-Tool " +
-          "/quotations/{id}) und die optionalen, die der Kunde beauftragt hat, plus gewünschte Änderungen. Keine optionalen Positionen.",
-      ),
-    title: titleSchema("der AB"),
-    quotation_id: z
-      .string()
-      .uuid()
-      .optional()
-      .describe("UUID des Angebots, aus dem diese AB hervorgeht. Dann prüft das Tool Kunde und Positionssumme gegen das Angebot."),
-    ...shippingFields,
-    ...documentFields,
-    ...deliveryTermsField,
-    ...documentTextFields,
-    ...draftField("die AB"),
-  })
-  .strict()
-  .superRefine(salesRefinement("order-confirmation"))
-  .refine((input) => (input.customer_number === undefined) !== (input.contact_id === undefined), {
-    message: "Genau eines von customer_number und contact_id angeben.",
-  });
-
-/** The quotation this confirmation follows, as the generic source fields. */
-const withSource = (input: SalesInput & { quotation_id?: string }): SalesInput =>
-  input.quotation_id && !input.source_document_id ? { ...input, source_document_id: input.quotation_id, source_document_type: "quotation" } : input;
 
 export default defineTool({
-  description:
-    "Erstellt eine Auftragsbestätigung (AB) in Lexware Office und schreibt sie direkt fest (sie erhält eine AB-Nummer); mit " +
-    "draft: true entsteht ein Entwurf. Positionen mit Beschreibung und Textpositionen wie beim Angebot, aber ohne optionale. " +
-    "Geht die AB aus einem Angebot hervor, dessen quotation_id mitgeben — das Angebot vorher über /voucherlist " +
-    "(voucherType 'quotation') suchen und lesen; bei mehreren passenden den Nutzer wählen lassen. Legt erst nach Freigabe an.",
-  inputSchema,
+  description: orderConfirmationDescription,
+  inputSchema: orderConfirmationInputSchema,
   approval: { request: withCard(salesApproval("order-confirmation", withSource)), response: approverPolicy },
   async execute(input, ctx) {
     return executeSalesDocument("order-confirmation", withSource(input), ctx);

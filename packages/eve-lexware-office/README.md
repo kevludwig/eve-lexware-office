@@ -70,6 +70,7 @@ Between card and click, hours can pass, so every writing tool checks again immed
 | `baseUrl`, `appUrl` | the API and app URLs | Only for another environment. |
 | `storage.store` | Vercel Blob | Where journal, reminder records, and send claims live. Any `JsonStore`. |
 | `storage.prefix` | `lexware-office` | Key prefix inside the store. |
+| `decide` | — | `({ tool, input, warnings, findings, context })` → `"ask"`, `"approve"`, or `{ deny }` — a rule instead of a person, after the checks. See [Deciding without a person](#deciding-without-a-person). |
 | `canApprove` | the requester only | `(responder, context) => boolean` — who may approve a write or cancel it. See [Who may approve](#who-may-approve). |
 | `onApprovalCard` | — | `(callId, card)` with the finished card: title, subtitle, facts, note, findings. For your own UI. |
 | `conversationUrl` | — | `(sessionId) => string`, for "waits in another conversation". |
@@ -120,9 +121,50 @@ export default lexware({
 });
 ```
 
+## Deciding without a person
+
+`decide` runs after a writing tool's checks, only when the tool would ask a person. `tool` is the tool's own name (`send_payment_reminder`), `input` what the model passed, `warnings` the typed findings and `findings` the same as the card shows them, `context` eve's approval context (session, caller, call id).
+
+```ts
+export default lexware({
+  // …
+  async decide({ tool, input, warnings, context }) {
+    if (tool !== "send_payment_reminder" || warnings.length > 0) return "ask";
+    if (context.session.auth.current?.attributes?.origin !== "schedule") return "ask";
+    await recordRuleApproval(context.callId, "first reminder, no findings"); // your protocol
+    return "approve";
+  },
+});
+```
+
+Return `"ask"` for the card, `"approve"` to run without one, `{ deny: "reason" }` to refuse. What the tool's own checks refuse never reaches `decide`, and a `decide` that throws asks a person. The re-check right before writing runs either way.
+
+## Without eve: `./operations`
+
+The customer and sales document writes also run without eve — for another surface on the same account, such as a remote MCP server whose writes wait on an approval page:
+
+```ts
+import { createLexwareClient, memoryStore } from "@kevludwig/lexware-office";
+import { buildCard, executeApprovedSalesDocument, invoiceInputSchema, journalIn, prepareSalesDocument, shownDuplicates } from "@kevludwig/eve-lexware-office/operations";
+
+const client = createLexwareClient({ apiKey });
+const input = invoiceInputSchema.parse(args);
+const warnings = await prepareSalesDocument(client, "invoice", input);
+const card = buildCard("create_invoice", input, warnings);
+// keep input and warnings with the pending action; after a person approves:
+const shown = shownDuplicates(warnings);
+await executeApprovedSalesDocument({ client, journal: journalIn(store) }, "invoice", input, {
+  id: actionId,
+  shownOnCard: (url) => shown.includes(url),
+  notes: () => card.findings.map((finding) => `${finding.title}: ${finding.value}`),
+});
+```
+
+The same checks, card, journal and re-check as the eve tools. Keep the input unchanged between card and click — eve guarantees that per call, your store must.
+
 ## Tests
 
-`npm test` runs 98 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
+`npm test` runs 127 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
 
 ## Not affiliated with Lexware
 

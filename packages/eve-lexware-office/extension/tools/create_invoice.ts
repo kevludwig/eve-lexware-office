@@ -1,58 +1,13 @@
 import { defineTool } from "eve/tools";
-import { z } from "zod";
 
 import { approverPolicy } from "../lib/runtime";
+import { executeSalesDocument, salesApproval } from "../lib/sales";
+import { invoiceDescription, invoiceInputSchema } from "../lib/sales-tools";
 import { withCard } from "../lib/with-card";
-import {
-  COUNTING_LINE_MESSAGE,
-  MAX_LINE_ITEMS,
-  buyerReferenceField,
-  customerFields,
-  documentFields,
-  documentTextFields,
-  executeSalesDocument,
-  hasCountingLine,
-  lineItemSchema,
-  salesApproval,
-  salesRefinement,
-  shippingFields,
-  titleSchema,
-} from "../lib/sales";
-
-const inputSchema = z
-  .object({
-    ...customerFields,
-    items: z
-      .array(lineItemSchema({ allowOptional: false }))
-      .min(1)
-      .max(MAX_LINE_ITEMS)
-      .refine(hasCountingLine, { message: COUNTING_LINE_MESSAGE })
-      .describe("Alle Positionen der Rechnung — bepreiste und Textpositionen, keine optionalen"),
-    source_document_id: z.string().uuid().optional().describe("UUID des Angebots bzw. der AB, aus der diese Rechnung hervorgeht"),
-    source_document_type: z.enum(["quotation", "order-confirmation"]).optional().describe("Art des Bezugsbelegs zu source_document_id"),
-    title: titleSchema("der Rechnung"),
-    ...shippingFields,
-    ...documentFields,
-    ...buyerReferenceField,
-    ...documentTextFields,
-  })
-  .strict()
-  .superRefine(salesRefinement("invoice"))
-  .refine((input) => (input.customer_number === undefined) !== (input.contact_id === undefined), {
-    message: "Genau eines von customer_number und contact_id angeben.",
-  })
-  .refine((input) => !input.source_document_id || input.source_document_type, {
-    message: "source_document_type zu source_document_id angeben.",
-  });
 
 export default defineTool({
-  description:
-    "Erstellt eine Ausgangsrechnung als Entwurf in Lexware Office — festgeschrieben und versendet wird dort, nie hier. " +
-    "Kunde per Kundennummer oder contact_id, dazu die Positionen (mit Beschreibung, Textpositionen als Zwischenüberschrift); " +
-    "source_document_id, wenn die Rechnung aus einem Angebot oder einer AB hervorgeht. Leistungsdatum bzw. -zeitraum " +
-    "(service_date / service_period) und Zahlungsziel (payment_term_days) gehören in die Felder, nicht nur in den Text. " +
-    "Legt erst nach Freigabe an und prüft vorher auf Dubletten.",
-  inputSchema,
+  description: invoiceDescription,
+  inputSchema: invoiceInputSchema,
   approval: { request: withCard(salesApproval("invoice")), response: approverPolicy },
   async execute(input, ctx) {
     return executeSalesDocument("invoice", input, ctx);

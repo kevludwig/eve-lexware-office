@@ -40,15 +40,23 @@ describe("createLexwareClient", () => {
     for (const gap of gaps) assert.ok(gap >= 55, `gap ${gap} ms`);
   });
 
-  it("retries once on 429, then reports", async () => {
-    const { impl, calls } = fakeFetch([() => new Response("", { status: 429 }), () => json({ ok: true })]);
+  it("retries on 429, then reports", async () => {
+    const limited = () => new Response("", { status: 429 });
+    const { impl, calls } = fakeFetch([limited, limited, () => json({ ok: true })]);
     const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0, rateLimitBackoffMs: 1 });
     assert.deepEqual(await client.request("/x"), { ok: true });
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
 
-    const twice = fakeFetch([() => new Response("", { status: 429 }), () => new Response("slow down", { status: 429 })]);
-    const limited = createLexwareClient({ apiKey: "k", fetch: twice.impl, minSpacingMs: 0, rateLimitBackoffMs: 1 });
-    await assert.rejects(limited.request("/x"), (error: unknown) => error instanceof LexwareApiError && error.status === 429);
+    const always = fakeFetch([limited, () => new Response("slow down", { status: 429 })]);
+    const once = createLexwareClient({ apiKey: "k", fetch: always.impl, minSpacingMs: 0, rateLimitBackoffMs: 1, rateLimitRetries: 1 });
+    await assert.rejects(once.request("/x"), (error: unknown) => error instanceof LexwareApiError && error.status === 429);
+  });
+
+  it("waits as long as Retry-After says", async () => {
+    const { impl, calls } = fakeFetch([() => new Response("", { status: 429, headers: { "retry-after": "0.2" } }), () => json({ ok: true })]);
+    const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0, rateLimitBackoffMs: 1 });
+    await client.request("/x");
+    assert.ok(calls[1]!.at - calls[0]!.at >= 190, `waited ${calls[1]!.at - calls[0]!.at} ms`);
   });
 
   it("turns an error answer into LexwareApiError with a hint", async () => {
@@ -116,7 +124,7 @@ describe("contact search", () => {
   it("does not ask Lexware for names under three characters (it answers 400)", async () => {
     const { impl, calls } = fakeFetch([() => json({ content: [{ id: "c1", company: { name: "KLM GmbH" }, roles: { customer: {} } }] })]);
     const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0 });
-    assert.deepEqual(await findContactsByName(client, " KL "), []);
+    assert.deepEqual(await findContactsByName(client, " AB "), []);
     assert.equal(calls.length, 0);
     assert.equal((await findContactsByName(client, "KLM")).length, 1);
     assert.equal(calls.length, 1);

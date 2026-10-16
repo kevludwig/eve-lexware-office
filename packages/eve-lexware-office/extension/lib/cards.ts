@@ -8,7 +8,7 @@ import { countsToTotal, daysSince, isPricedLine, isVatFreeTaxType, lineNet, netT
 import { eur, shortDate } from "./format";
 import { purchaseCard } from "./purchase-card";
 import { TAX_TYPE_LABEL, berlinToday, paymentOf, shippingOf, toLineItems, validUntilOf, type SalesInput } from "./sales";
-import { findingsOf } from "./findings";
+import { describeWarning, warningsOf, type Warning } from "./findings";
 import type { ApprovalCard } from "./types";
 
 /** `reserved`: characters the findings already take on the card. */
@@ -264,10 +264,16 @@ export function ownTool(name: string): string | null {
   return local in BUILDERS ? local : null;
 }
 
+/** The card of a call, with the findings its checks saved in the session. */
 export function approvalCard(toolName: string, callId: string, input: unknown): ApprovalCard | null {
+  return buildCard(toolName, input, warningsOf(callId));
+}
+
+/** The card for a tool's input and the findings of its checks — no eve, e.g. for an approval page. */
+export function buildCard(toolName: string, input: unknown, warnings: readonly Warning[]): ApprovalCard | null {
   const tool = ownTool(toolName);
   if (!tool) return null;
   const values = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
-  const findings = findingsOf(callId);
+  const findings = warnings.map(describeWarning);
   return { tool, ...BUILDERS[tool]!(values, factLength(findings)), findings };
 }

@@ -37,11 +37,13 @@ import {
   type SalesDocumentKind,
   type SalesTaxType,
   type ShippingConditions,
+  type LexwareClient,
 } from "@kevludwig/lexware-office";
 import { z } from "zod";
 
 import { describeWarning, notesOf, saveWarnings, wasShownOnCard, type Warning } from "./findings";
-import { readJournal, writeJournal } from "./journal";
+import { runtimeJournal } from "./journal";
+import type { Journal } from "./journal-store";
 import { client } from "./runtime";
 
 export const DOCUMENT_LABEL: Record<SalesDocumentKind, string> = {
@@ -560,10 +562,10 @@ export function salesRefinement(kind: SalesDocumentKind) {
  * a document to the wrong contact is wrong, not slightly off — an unresolvable
  * one is a warning on the card and an error when writing.
  */
-export async function resolveCustomer(input: SalesInput, signal?: AbortSignal): Promise<{ contact: Contact | null; warnings: Warning[] }> {
+export async function resolveCustomer(api: LexwareClient, input: SalesInput, signal?: AbortSignal): Promise<{ contact: Contact | null; warnings: Warning[] }> {
   if (input.contact_id) {
     try {
-      const contact = await getContact(client(), input.contact_id, signal);
+      const contact = await getContact(api, input.contact_id, signal);
       if (!contact.isCustomer) {
         return { contact: null, warnings: [{ kind: "sales-contact", reason: `contact_id ${input.contact_id} („${contact.name}") ist kein Kundenkontakt` }] };
       }
@@ -574,7 +576,7 @@ export async function resolveCustomer(input: SalesInput, signal?: AbortSignal): 
   }
   if (typeof input.customer_number === "number") {
     try {
-      const contact = await findContactByNumber(client(), input.customer_number, signal);
+      const contact = await findContactByNumber(api, input.customer_number, signal);
       return contact
         ? { contact, warnings: [] }
         : { contact: null, warnings: [{ kind: "sales-contact", reason: `Kein Kontakt mit Kundennummer ${input.customer_number}` }] };
@@ -585,18 +587,27 @@ export async function resolveCustomer(input: SalesInput, signal?: AbortSignal): 
   return { contact: null, warnings: [{ kind: "sales-contact", reason: "weder Kundennummer noch contact_id angegeben" }] };
 }
 
-/** Customer, duplicates, and the source document — network errors become findings, not exceptions. */
-export async function runSalesPreflight(kind: SalesDocumentKind, input: SalesInput, signal?: AbortSignal): Promise<Warning[]> {
+/** The checks with the mount's client — for the eve tools. */
+export function runSalesPreflight(kind: SalesDocumentKind, input: SalesInput, signal?: AbortSignal): Promise<Warning[]> {
+  return prepareSalesDocument(client(), kind, input, signal);
+}
+
+/**
+ * Customer, duplicates, the source document and the document settings —
+ * what the card shows before a person approves. Network errors become
+ * findings, not exceptions. Needs no eve: any caller with a client can run it.
+ */
+export async function prepareSalesDocument(api: LexwareClient, kind: SalesDocumentKind, input: SalesInput, signal?: AbortSignal): Promise<Warning[]> {
   const warnings: Warning[] = [];
   const itemsNet = totalOf(toLineItems(input.items));
-  const { contact, warnings: contactWarnings } = await resolveCustomer(input, signal);
+  const { contact, warnings: contactWarnings } = await resolveCustomer(api, input, signal);
   warnings.push(...contactWarnings);
 
   if (contact) {
     // The real name on the card: a valid but wrong contact_id passes every role check.
     warnings.push({ kind: "customer-resolved", name: contact.name, number: contact.number });
     try {
-      const result = await findDuplicateSalesDocument(client(), { kind, contactId: contact.id, itemsTotalNet: itemsNet, signal });
+      const result = await findDuplicateSalesDocument(api, { kind, contactId: contact.id, itemsTotalNet: itemsNet, signal });
       if (result.status === "match") {
         warnings.push({
           kind: "sales-duplicate",
@@ -614,8 +625,8 @@ export async function runSalesPreflight(kind: SalesDocumentKind, input: SalesInp
     }
   }
 
-  warnings.push(...(await checkSource(kind, input, contact, itemsNet, signal)));
-  warnings.push(...(await checkDocumentSettings(kind, input, contact, signal)));
+  warnings.push(...(await checkSource(api, kind, input, contact, itemsNet, signal)));
+  warnings.push(...(await checkDocumentSettings(api, kind, input, contact, signal)));
   return warnings;
 }
 
@@ -625,7 +636,7 @@ export async function runSalesPreflight(kind: SalesDocumentKind, input: SalesInp
  * tax type fits customer and account, and whether an invoice says when the
  * service was supplied. Network errors become findings.
  */
-async function checkDocumentSettings(kind: SalesDocumentKind, input: SalesInput, contact: Contact | null, signal?: AbortSignal): Promise<Warning[]> {
+async function checkDocumentSettings(api: LexwareClient, kind: SalesDocumentKind, input: SalesInput, contact: Contact | null, signal?: AbortSignal): Promise<Warning[]> {
   const warnings: Warning[] = [];
   const note = (title: string, value: string) => warnings.push({ kind: "note", title, value });
 
@@ -644,7 +655,7 @@ async function checkDocumentSettings(kind: SalesDocumentKind, input: SalesInput,
 
   if (input.payment_term_days === undefined) {
     try {
-      const fallback = await defaultPaymentCondition(client(), signal);
+      const fallback = await defaultPaymentCondition(api, signal);
       note(
         fallback?.duration === 0 ? "⚠ Zahlungsziel-Vorgabe" : "Zahlungsziel-Vorgabe",
         fallback
@@ -658,7 +669,7 @@ async function checkDocumentSettings(kind: SalesDocumentKind, input: SalesInput,
 
   if (input.print_layout) {
     try {
-      const layout = await resolvePrintLayout(client(), input.print_layout, signal);
+      const layout = await resolvePrintLayout(api, input.print_layout, signal);
       if (layout) note("Druckvorlage gefunden", layout.name);
       else note("⚠ Druckvorlage", `„${input.print_layout}“ nicht eindeutig gefunden — Anlegen bricht ab; Namen aus /print-layouts nehmen`);
     } catch (error) {
@@ -668,14 +679,14 @@ async function checkDocumentSettings(kind: SalesDocumentKind, input: SalesInput,
 
   for (const id of articleIdsOf(input.items)) {
     try {
-      const article = await getArticle(client(), id, signal);
+      const article = await getArticle(api, id, signal);
       note("Artikel", `${article.title}${article.articleNumber ? ` (${article.articleNumber})` : ""} — ${article.lineType === "material" ? "Produkt" : "Dienstleistung"}`);
     } catch (error) {
       note("⚠ Artikel", `${id} nicht lesbar — Anlegen bricht ab (${describeError(error)})`);
     }
   }
 
-  warnings.push(...(await checkTaxType(input, contact, signal)));
+  warnings.push(...(await checkTaxType(api, input, contact, signal)));
   return warnings;
 }
 
@@ -685,7 +696,7 @@ async function checkDocumentSettings(kind: SalesDocumentKind, input: SalesInput,
  * contact that allows tax-free invoices, vatfree an account set up that way.
  * A mismatch is a 406 later — the card says so now.
  */
-async function checkTaxType(input: SalesInput, contact: Contact | null, signal?: AbortSignal): Promise<Warning[]> {
+async function checkTaxType(api: LexwareClient, input: SalesInput, contact: Contact | null, signal?: AbortSignal): Promise<Warning[]> {
   const type = input.tax_type ?? "net";
   if (!isVatFreeTaxType(type) || type === "photovoltaicEquipment") return [];
   const warnings: Warning[] = [];
@@ -693,7 +704,7 @@ async function checkTaxType(input: SalesInput, contact: Contact | null, signal?:
 
   if (type === "vatfree") {
     try {
-      const profile = await getProfile(client(), signal);
+      const profile = await getProfile(api, signal);
       if (profile.taxType !== "vatfree" && !profile.smallBusiness) warn("das Konto ist nicht als steuerfrei oder Kleinunternehmer eingerichtet — Lexware Office lehnt den Beleg ab");
     } catch (error) {
       warn(`Konto-Einstellung nicht prüfbar (${describeError(error)})`);
@@ -711,7 +722,7 @@ async function checkTaxType(input: SalesInput, contact: Contact | null, signal?:
   const expected = type === "constructionService13b" ? null : type === "intraCommunitySupply" || type === "externalService13b" ? "intraCommunity" : "thirdPartyCountry";
   if (expected && contact.countryCode) {
     try {
-      const country = (await listCountries(client(), signal)).find((entry) => entry.countryCode === contact.countryCode);
+      const country = (await listCountries(api, signal)).find((entry) => entry.countryCode === contact.countryCode);
       if (country && country.taxClassification !== expected) {
         warn(`Rechnungsadresse in ${country.countryNameDE ?? contact.countryCode} — passt nicht (${expected === "intraCommunity" ? "EU-Ausland erwartet" : "Nicht-EU-Land erwartet"})`);
       }
@@ -728,14 +739,14 @@ async function checkTaxType(input: SalesInput, contact: Contact | null, signal?:
  * (changed positions), a foreign customer almost never is. Optional lines
  * count on neither side.
  */
-async function checkSource(target: SalesDocumentKind, input: SalesInput, contact: Contact | null, itemsNet: number, signal?: AbortSignal): Promise<Warning[]> {
+async function checkSource(api: LexwareClient, target: SalesDocumentKind, input: SalesInput, contact: Contact | null, itemsNet: number, signal?: AbortSignal): Promise<Warning[]> {
   const id = input.source_document_id?.trim();
   if (!id) return [];
   const kind = input.source_document_type;
   if (!kind) return [{ kind: "source-check-failed", reason: "source_document_id ohne source_document_type angegeben" }];
   const label = DOCUMENT_LABEL[kind];
   try {
-    const source = await getSalesDocument(client(), kind, id, signal);
+    const source = await getSalesDocument(api, kind, id, signal);
     const sourceLabel = `${label} ${source.voucherNumber ?? id}`;
     const warnings: Warning[] = [{ kind: "source-resolved", sourceLabel, contactName: source.contactName }];
     // A total discount is invisible in the lines: copying them reproduces the full prices.
@@ -777,11 +788,48 @@ export function salesApproval(kind: SalesDocumentKind, normalize: (input: SalesI
  * drafts — finalized and sent in Lexware Office. A replay of the same call does not create twice; a document that
  * appeared between card and click stops the write.
  */
-export async function executeSalesDocument(
+export function executeSalesDocument(
   kind: SalesDocumentKind,
   input: SalesInput,
   ctx: { callId: string; abortSignal?: AbortSignal },
 ): Promise<Record<string, unknown>> {
+  return executeApprovedSalesDocument({ client: client(), journal: runtimeJournal }, kind, input, {
+    id: ctx.callId,
+    shownOnCard: (url) => wasShownOnCard(ctx.callId, url),
+    notes: () => notesOf(ctx.callId),
+    signal: ctx.abortSignal,
+  });
+}
+
+/** What an approved write needs besides the input: where it runs, and what the card showed. */
+export interface Operations {
+  client: LexwareClient;
+  journal: Journal;
+}
+
+export interface Approved {
+  /** The approved call or action, unique: the journal key, so a replay does not create twice. */
+  id: string;
+  /** Whether the card showed this duplicate — a known one was approved, a new one stops the write. */
+  shownOnCard: (url: string) => boolean;
+  /** The card's findings as lines for the result, so the answer does not contradict the card. */
+  notes: () => string[];
+  signal?: AbortSignal;
+}
+
+/**
+ * Creates the approved document — the same steps as the eve tool, for any
+ * caller: a replay finds the journal entry, a duplicate that appeared after
+ * the card stops the write, print layout and articles are looked up again.
+ */
+export async function executeApprovedSalesDocument(
+  ops: Operations,
+  kind: SalesDocumentKind,
+  input: SalesInput,
+  approved: Approved,
+): Promise<Record<string, unknown>> {
+  const api = ops.client;
+  const ctx = { callId: approved.id, abortSignal: approved.signal };
   const label = DOCUMENT_LABEL[kind];
   const items = toLineItems(input.items);
   const computed = totalOf(items);
@@ -793,22 +841,22 @@ export async function executeSalesDocument(
     ...(optional.length > 0 ? { optionalPositions: optional.length, optionalNetTotal: netTotal(optional.filter(isPricedLine)) } : {}),
   };
 
-  const journal = await readJournal(kind, ctx.callId);
+  const journal = await ops.journal.read(kind, ctx.callId);
   if (journal?.resourceId) {
     return {
-      ...(await describeCreated(kind, journal.resourceId, ctx.abortSignal)),
+      ...(await describeCreated(api, kind, journal.resourceId, ctx.abortSignal)),
       ...counts,
       note: `Wiederaufnahme: ${label} war aus einem abgebrochenen Lauf bereits angelegt — nichts doppelt erstellt.`,
     };
   }
 
-  const { contact, warnings } = await resolveCustomer(input, ctx.abortSignal);
+  const { contact, warnings } = await resolveCustomer(api, input, ctx.abortSignal);
   if (!contact) throw new Error(`Kunde nicht auflösbar: ${warnings.map((warning) => describeWarning(warning).value).join("; ")}`);
 
   // Hours can pass between card and click; a search error must not block the approved write.
   try {
-    const duplicate = await findDuplicateSalesDocument(client(), { kind, contactId: contact.id, itemsTotalNet: computed, signal: ctx.abortSignal });
-    if (duplicate.status === "match" && !wasShownOnCard(ctx.callId, duplicate.match.url)) {
+    const duplicate = await findDuplicateSalesDocument(api, { kind, contactId: contact.id, itemsTotalNet: computed, signal: ctx.abortSignal });
+    if (duplicate.status === "match" && !approved.shownOnCard(duplicate.match.url)) {
       throw new Error(
         `Abgebrochen: Inzwischen gibt es bereits ${kind === "invoice" ? "eine" : "ein"} ${label} mit dieser Positionssumme: ${duplicate.match.url}. ` +
           "Nichts angelegt. Rufe das Tool erneut auf, wenn trotzdem ein weiterer Beleg entstehen soll — dann steht der Fund auf der Karte.",
@@ -821,28 +869,28 @@ export async function executeSalesDocument(
   // Print layout and articles are looked up again: hours can pass between card and click.
   let printLayoutId: string | undefined;
   if (input.print_layout) {
-    const layout = await resolvePrintLayout(client(), input.print_layout, ctx.abortSignal).catch(() => null);
+    const layout = await resolvePrintLayout(api, input.print_layout, ctx.abortSignal).catch(() => null);
     if (!layout) throw new Error(`${label} nicht angelegt: Druckvorlage „${input.print_layout}“ nicht eindeutig gefunden.`);
     printLayoutId = layout.id;
   }
   const articleTypes = new Map<string, "service" | "material">();
   for (const id of articleIdsOf(input.items)) {
     try {
-      articleTypes.set(id, (await getArticle(client(), id, ctx.abortSignal)).lineType);
+      articleTypes.set(id, (await getArticle(api, id, ctx.abortSignal)).lineType);
     } catch (error) {
       throw new Error(`${label} nicht angelegt: Artikel ${id} nicht lesbar (${describeError(error)}).`);
     }
   }
   const document = toSalesDocument(kind, input, { contactId: contact.id, printLayoutId, articleTypes });
 
-  await writeJournal(kind, ctx.callId, { status: "pending" });
+  await ops.journal.write(kind, ctx.callId, { status: "pending" });
 
   // A named source becomes a document chain; an invalid pursue (406) must not
   // block the approved document — then it is created without the link.
   const sourceId = input.source_document_id?.trim() || undefined;
-  const linkable = sourceId ? await canChain(kind, input.source_document_type, sourceId, ctx.abortSignal) : false;
+  const linkable = sourceId ? await canChain(api, kind, input.source_document_type, sourceId, ctx.abortSignal) : false;
   let chained = linkable;
-  const create = (precedingSalesVoucherId?: string) => createSalesDocument(client(), { ...document, finalize, precedingSalesVoucherId }, ctx.abortSignal);
+  const create = (precedingSalesVoucherId?: string) => createSalesDocument(api, { ...document, finalize, precedingSalesVoucherId }, ctx.abortSignal);
 
   let created;
   try {
@@ -857,8 +905,8 @@ export async function executeSalesDocument(
     }
   }
 
-  await writeJournal(kind, ctx.callId, { status: "created", resourceId: created.id });
-  const detail = await describeCreated(kind, created.id, ctx.abortSignal);
+  await ops.journal.write(kind, ctx.callId, { status: "created", resourceId: created.id });
+  const detail = await describeCreated(api, kind, created.id, ctx.abortSignal);
 
   return {
     ...detail,
@@ -878,7 +926,7 @@ export async function executeSalesDocument(
               : `KEINE Verknüpfung — das Angebot ${sourceId} hat optionale Positionen, daraus verknüpft Lexware Office keine AB (ohne Belegkette angelegt)`,
         }
       : {}),
-    preflightNotes: notesOf(ctx.callId),
+    preflightNotes: approved.notes(),
     note: finalize
       ? `${[label, detail.voucherNumber].filter(Boolean).join(" ")} ist festgeschrieben. Versand an den Kunden aus Lexware Office.`
       : `${label} ist ein Entwurf, nicht festgeschrieben — gegenlesen, festschreiben und versenden in Lexware Office.`,
@@ -908,22 +956,22 @@ function settingsResult(document: NewSalesDocument): Record<string, unknown> {
  * become an order confirmation's predecessor. A failed read tries the link —
  * the 406 fallback still catches it.
  */
-async function canChain(kind: SalesDocumentKind, sourceKind: SalesDocumentKind | undefined, id: string, signal?: AbortSignal): Promise<boolean> {
+async function canChain(api: LexwareClient, kind: SalesDocumentKind, sourceKind: SalesDocumentKind | undefined, id: string, signal?: AbortSignal): Promise<boolean> {
   if (!sourceKind) return true;
   if (kind !== "order-confirmation" || sourceKind !== "quotation") return true;
   try {
-    return !chainImpossible(kind, sourceKind, await getSalesDocument(client(), sourceKind, id, signal));
+    return !chainImpossible(kind, sourceKind, await getSalesDocument(api, sourceKind, id, signal));
   } catch {
     return true;
   }
 }
 
-async function describeCreated(kind: SalesDocumentKind, id: string, signal?: AbortSignal): Promise<{ documentId: string; url: string; voucherNumber?: string }> {
+async function describeCreated(api: LexwareClient, kind: SalesDocumentKind, id: string, signal?: AbortSignal): Promise<{ documentId: string; url: string; voucherNumber?: string }> {
   try {
-    const detail = await getSalesDocument(client(), kind, id, signal);
+    const detail = await getSalesDocument(api, kind, id, signal);
     return { documentId: id, url: detail.url, voucherNumber: detail.voucherNumber };
   } catch {
     // The document exists — a failed read-back only costs the number.
-    return { documentId: id, url: client().voucherUrl(id) };
+    return { documentId: id, url: api.voucherUrl(id) };
   }
 }

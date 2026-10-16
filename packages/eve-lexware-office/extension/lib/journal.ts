@@ -1,38 +1,18 @@
 /**
- * Idempotency journal, per tool call. Tools run as durable steps and may run
- * again after a crash — even after a successful write, if the step's commit
- * was lost. `pending` before the write, `created` after it: a replay finds
- * the entry and does not write twice.
- *
- * Never throws: an unwritable journal must not block an approved action.
+ * The mount's journal, per tool call (./journal-store.ts on the mount's store).
  */
 
-import type { PaymentReminderEffect } from "@kevludwig/lexware-office";
+import { journalIn, type JournalEntry } from "./journal-store";
+import { store } from "./runtime";
 
-import { key, store } from "./runtime";
+export type { JournalEntry } from "./journal-store";
 
-export interface JournalEntry {
-  status: "pending" | "created" | "attached";
-  resourceId?: string;
-  /** What a sent payment reminder did, kept so a replay returns the same proof. */
-  effect?: PaymentReminderEffect;
-  at: string;
+export const runtimeJournal = journalIn(store);
+
+export function readJournal(kind: string, callId: string): Promise<JournalEntry | null> {
+  return runtimeJournal.read(kind, callId);
 }
 
-export async function readJournal(kind: string, callId: string): Promise<JournalEntry | null> {
-  try {
-    const entry = await store().read<JournalEntry>(key("journal", kind, callId));
-    return entry && typeof entry.status === "string" ? entry : null;
-  } catch (error) {
-    console.warn(`[lexware] Cannot read journal ${kind}/${callId}: ${String(error)}`);
-    return null;
-  }
-}
-
-export async function writeJournal(kind: string, callId: string, entry: Omit<JournalEntry, "at">): Promise<void> {
-  try {
-    await store().write(key("journal", kind, callId), { ...entry, at: new Date().toISOString() });
-  } catch (error) {
-    console.warn(`[lexware] Cannot write journal ${kind}/${callId}: ${String(error)}`);
-  }
+export function writeJournal(kind: string, callId: string, entry: Omit<JournalEntry, "at">): Promise<void> {
+  return runtimeJournal.write(kind, callId, entry);
 }

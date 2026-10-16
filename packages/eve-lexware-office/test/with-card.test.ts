@@ -13,14 +13,14 @@ describe("the card reaches the channel before the request does", () => {
 
     const status = await createCustomer.approval.request({
       toolName: "lexware__create_customer",
-      callId: "call-kl",
+      callId: "call-1",
       toolInput: { company_name: "Beispiel GmbH", street: "Musterstraße 1", zip: "12345", city: "Musterstadt" },
       abortSignal: new AbortController().signal,
     });
 
     assert.equal(status, "user-approval");
     assert.equal(cards.length, 1);
-    assert.equal(cards[0]!.callId, "call-kl");
+    assert.equal(cards[0]!.callId, "call-1");
     assert.match(cards[0]!.card.title, /Kunde/);
     // Findings live in eve's session state, which only exists inside a running session.
     useConfig({});

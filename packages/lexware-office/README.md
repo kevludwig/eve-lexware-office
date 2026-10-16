@@ -27,7 +27,8 @@ One client is one rate-limit queue: requests are spaced (the API allows two per 
 | `appUrl` | `https://app.lexware.de` | Base of the links `voucherUrl()` builds |
 | `minSpacingMs` | `550` | Spacing between two requests |
 | `timeoutMs` | `20000` | Per request, counted from when it fires |
-| `rateLimitBackoffMs` | `1000` | Wait before the retry after a 429 |
+| `rateLimitBackoffMs` | `1000` | Wait before a retry after a 429 without `Retry-After`, growing with each retry |
+| `rateLimitRetries` | `3` | How often a request answered with 429 is sent again; `Retry-After` is honoured (at most 10 s) |
 | `fetch` | global `fetch` | Your own implementation, e.g. in tests |
 
 A failed request throws `LexwareApiError` with `status` and `responseBody`; `describeError(error)` turns it into a sentence worth showing a person — a 403 says which permission the key lacks, a 406 what the API usually means by it.

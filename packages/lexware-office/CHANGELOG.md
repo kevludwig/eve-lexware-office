@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+### Changed
+
+- A request answered with 429 is sent again up to `rateLimitRetries` times (default 3, before: once). The wait follows the server's `Retry-After` (at most 10 s), else `rateLimitBackoffMs` times the attempt. This covers several clients on one account — serverless instances, a second app — that the per-client queue does not see.
+
 ## 0.3.0
 
 ### Added

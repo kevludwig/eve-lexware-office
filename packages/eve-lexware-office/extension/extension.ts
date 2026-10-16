@@ -2,7 +2,7 @@ import type { JsonStore, LexwareClient, ReminderPolicy, ReminderSender, RenderRe
 import { defineExtension } from "eve/extension";
 import { z } from "zod";
 
-import type { ApprovalCard, AttachmentFallback, CanApprove, CapturedPurchase } from "./lib/types";
+import type { ApprovalCard, AttachmentFallback, CanApprove, CapturedPurchase, Decide } from "./lib/types";
 
 const isFunction = (value: unknown) => typeof value === "function";
 const isObjectWith = (...keys: string[]) => (value: unknown) =>
@@ -44,6 +44,14 @@ export default defineExtension({
        * requested the call. `() => true` lets anyone in the session answer.
        */
       canApprove: z.custom<CanApprove>(isFunction).optional(),
+
+      /**
+       * Decides a writing call after its checks, instead of a person:
+       * `({ tool, input, warnings, findings, context }) => "ask" | "approve" | { deny }`.
+       * For rules such as "first reminder up to a set amount runs by
+       * itself". Default: every call asks a person. Record what you approve.
+       */
+      decide: z.custom<Decide>(isFunction).optional(),
 
       /** Receives the finished approval card of each writing tool, e.g. to show it in a web UI. */
       onApprovalCard: z.custom<(callId: string, card: ApprovalCard) => void | Promise<void>>(isFunction).optional(),

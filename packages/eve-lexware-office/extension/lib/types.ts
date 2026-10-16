@@ -1,4 +1,6 @@
-import type { ApprovalResponseContext } from "eve/tools/approval";
+import type { ApprovalContext, ApprovalResponseContext } from "eve/tools/approval";
+
+import type { Warning } from "./findings";
 
 /** Whoever answers an approval (approve or cancel), as the channel authenticated them. */
 export type Responder = ApprovalResponseContext["response"]["principal"];
@@ -51,3 +53,24 @@ export interface CapturedPurchase {
   tax: number;
   net: number;
 }
+
+/**
+ * A writing call whose checks are done and that would now ask a person:
+ * the tool (without the mount's namespace), its input, and what the checks
+ * found. `context` is eve's approval context — session, caller, call id.
+ */
+export interface DecideCall {
+  tool: string;
+  input: unknown;
+  warnings: readonly Warning[];
+  findings: readonly Finding[];
+  context: ApprovalContext;
+}
+
+/**
+ * Who decides instead of a person: "ask" shows the card as before,
+ * "approve" runs the call without one, `{ deny }` refuses it with a reason.
+ * Record an automatic approval yourself before returning "approve" — the
+ * extension cannot know where your protocol lives.
+ */
+export type Decide = (call: DecideCall) => "ask" | "approve" | { deny: string } | Promise<"ask" | "approve" | { deny: string }>;
