@@ -5,7 +5,7 @@
 ### Added
 
 - `decide` in the mount: `({ tool, input, warnings, findings, context }) => "ask" | "approve" | { deny }` answers a writing call after its checks, instead of a person — for rules such as "a first reminder up to a set amount runs by itself". It is asked only when the tool would otherwise show a card; what the tool's own checks refuse stays refused. A `decide` that throws asks a person. Record automatic approvals yourself.
-- `@kevludwig/eve-lexware-office/operations`: the writes without eve, for another agent surface on the same account (e.g. a remote MCP server with an approval page). Input schemas and descriptions of the customer and sales document tools, `prepareCustomer` / `prepareSalesDocument` (the checks before the card), `buildCard`, `describeWarning`, `executeApprovedCustomer` / `executeApprovedSalesDocument` (the approved write with journal and re-check), `journalIn(store)` and `shownDuplicates`. Nothing in it reads the mount's configuration or eve's session.
+- `@kevludwig/eve-lexware-office/operations`: the writes without eve, for another agent surface on the same account (e.g. a remote MCP server with an approval page). Input schemas and descriptions of the customer and sales document tools, `prepareCustomer` / `prepareSalesDocument` (the checks before the card), `buildCard`, `describeWarning`, `executeApprovedCustomer` / `executeApprovedSalesDocument` (the approved write with journal and re-check), `journalIn(store)`, `shownDuplicates`, and the read tool's allowlist as `readAccount` with `readInputSchema`. Nothing in it reads the mount's configuration or eve's session.
 
 ### Changed
 
