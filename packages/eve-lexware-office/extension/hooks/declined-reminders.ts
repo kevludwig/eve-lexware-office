@@ -1,12 +1,16 @@
 import { defineHook } from "eve/hooks";
 
+import { warningsOf } from "../lib/findings";
 import { ledger } from "../lib/runtime";
 import { boundReminderTarget } from "../lib/state";
+import { EARLY_TITLE } from "../lib/warnings";
 
 /**
  * Records a declined payment reminder, so the next runs leave the invoice
  * alone for a while. A sent reminder stays on record — declining a repeat
- * must not reopen it. Never throws.
+ * must not reopen it. Declining a reminder whose card said "⚠ Früh" means
+ * "not yet": it is not recorded, the invoice comes up again once it is due
+ * (its pending mark expires after pendingValidHours). Never throws.
  */
 export default defineHook({
   events: {
@@ -16,6 +20,8 @@ export default defineHook({
       if (typeof callId !== "string") return;
       const target = boundReminderTarget(callId);
       if (!target) return;
+      const early = warningsOf(callId).some((warning) => warning.kind === "note" && warning.title === EARLY_TITLE);
+      if (early) return;
       try {
         if ((await ledger().read(target.invoiceId))?.status === "sent") return;
         await ledger().write({ invoiceId: target.invoiceId, voucherNumber: target.voucherNumber, status: "declined" });

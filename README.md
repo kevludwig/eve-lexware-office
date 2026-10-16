@@ -53,7 +53,7 @@ The mount's file name is the namespace: tools arrive as `lexware__read`, `lexwar
 pnpm install
 pnpm build      # library to dist/, extension to dist/extension/
 pnpm typecheck
-pnpm test       # 192 tests, no network: a fake API answers every request
+pnpm test       # 194 tests, no network: a fake API answers every request
 ```
 
 Node 24, pnpm workspaces. The tests run without a Lexware Office account.

@@ -19,6 +19,7 @@ import { readJournal, writeJournal } from "../lib/journal";
 import { approverPolicy, client, config, ledger, renderReminder } from "../lib/runtime";
 import { withCard } from "../lib/with-card";
 import { saveWarnings, type Warning } from "../lib/findings";
+import { EARLY_TITLE } from "../lib/warnings";
 import { bindReminderTarget, boundReminderTarget } from "../lib/state";
 
 const inputSchema = z
@@ -115,7 +116,7 @@ export default defineTool({
       if (daysPastReminderDue(invoice, policy) < policy.minDaysOverdue) {
         findings.push({
           kind: "note",
-          title: "⚠ Früh",
+          title: EARLY_TITLE,
           value: isDueImmediately(invoice)
             ? `Sofort fällig, erinnert wird sonst erst ab ${shortDate(earliestReminderDate(invoice, policy))}`
             : `Erst ${daysSince(invoice.dueDate)} Tage überfällig — erinnert wird sonst ab ${shortDate(earliestReminderDate(invoice, policy))}`,

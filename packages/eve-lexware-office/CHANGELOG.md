@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2
+
+### Changed
+
+- Declining a payment reminder whose card said "⚠ Früh" (asked for before the policy's first day) no longer rests the invoice for `declinedQuietDays`: it means "not yet". The invoice comes up again once it is due; its pending mark expires after `pendingValidHours`.
+
 ## 0.6.1
 
 ### Fixed

@@ -184,7 +184,7 @@ The same checks, card, journal and re-check as the eve tools. Keep the input unc
 
 ## Tests
 
-`npm test` runs 136 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
+`npm test` runs 138 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
 
 ## Not affiliated with Lexware
 

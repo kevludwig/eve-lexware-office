@@ -182,3 +182,6 @@ export function describeWarning(warning: Warning): Finding {
       };
   }
 }
+
+/** The finding of a payment reminder asked for before the policy's first day — declining it means "not yet", not "no". */
+export const EARLY_TITLE = "⚠ Früh";
