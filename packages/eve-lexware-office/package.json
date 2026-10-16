@@ -35,17 +35,18 @@
   },
   "dependencies": {
     "@kevludwig/lexware-office": "workspace:*",
-    "@vercel/blob": "^2.8.0",
-    "zod": "4.5.4"
+    "@vercel/blob": "^2.8.0"
   },
   "devDependencies": {
     "@types/node": "24.x",
     "ai": "7.0.137",
     "eve": "0.77.0",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "zod": "4.6.7"
   },
   "peerDependencies": {
-    "eve": ">=0.77.0"
+    "eve": ">=0.77.0",
+    "zod": "^4.5.4"
   },
   "description": "eve extension for Lexware Office: read the account, create customers, quotations, order confirmations, invoices and purchase invoices, and send payment reminders — every write behind an approval.",
   "license": "MIT",
