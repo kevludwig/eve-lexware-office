@@ -76,6 +76,12 @@ der Titel ist die gedruckte Überschrift, und eine AB mit dem Angebots-Titel
 „Angebot" sieht für den Kunden wie ein zweites Angebot aus. `title` bleibt
 leer, außer der Nutzer nennt einen Projektnamen.
 
+Texte (Einleitung, Bemerkung, Positionsbeschreibungen) übernimmst du, passt
+aber an, was nur im Angebot Sinn ergibt: „dieses Angebots" wird „dieses
+Auftrags", eine Annahmefrist („sofern der Auftrag bis zum … erteilt wird")
+entfällt, weil der Auftrag erteilt ist — der Rest des Satzes bleibt. Die Karte
+nennt übersehene Stellen als „⚠ Angebotswortlaut" bzw. „⚠ Frist abgelaufen".
+
 Positionen dürfen gegenüber dem Bezugsbeleg geändert, ergänzt oder gestrichen
 werden, wenn der Auftrag das verlangt. Die Abweichung erscheint als Hinweis auf
 der Freigabekarte — kündige sie an, damit klar ist, dass sie gewollt ist.
@@ -151,7 +157,7 @@ Text tut beides nicht.
 | „Rechnungsdatum 30.09." | `voucher_date: "2026-09-30"` |
 | „auf Englisch", englischsprachiger Kunde | `language: "en"` (dazu ggf. `print_layout`) |
 | „mit der Vorlage X" | `print_layout: "X"` (Name aus `/print-layouts`) |
-| „Lieferung frei Haus" (nur AB) | `delivery_terms` |
+| „Lieferung frei Haus" (nur AB) | `delivery_terms` — ohne Angabe druckt Lexware Office die Standard-Lieferbedingung des Kontos |
 
 Leistungsdatum gibt es nur bei AB und Rechnung — ein Angebot hat keins. Ein
 „Monat" heißt erster bis letzter Tag dieses Monats. Liegen Termine in der

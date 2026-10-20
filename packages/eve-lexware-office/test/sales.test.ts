@@ -640,4 +640,25 @@ describe("document field checks before the card", () => {
     const notes = titles(await runSalesPreflight("quotation", { customer_number: 10001, items, print_layout: "Englisch" }));
     assert.ok(notes.some((note) => /^⚠ Druckvorlage: „Englisch“ nicht eindeutig gefunden/.test(note)), notes.join("\n"));
   });
+
+  it("names quotation wording and passed deadlines in an order confirmation", async () => {
+    useApi(customer, noDocuments, paymentDefault(14));
+    const notes = titles(
+      await runSalesPreflight("order-confirmation", {
+        customer_number: 10001,
+        payment_term_days: 14,
+        voucher_date: "2026-10-20",
+        introduction: "Nicht Teil dieses Angebots: Fotos.",
+        items: [{ ...items[0], description: "Start am 21.10.2026, sofern der Auftrag bis zum 19.10.2026 erteilt wird. Fertig bis 30.11.2026." }],
+      }),
+    );
+    assert.ok(notes.includes("⚠ Angebotswortlaut: „Angebot“ in Einleitung — in einer AB „Auftrag“ schreiben, außer der Bezug ist gewollt"), notes.join("\n"));
+    assert.ok(notes.includes("⚠ Frist abgelaufen: „bis zum 19.10.2026“ in „Workshop-Tag“ liegt vor dem Belegdatum — Annahmefrist aus dem Angebot? Streichen oder auflösen"), notes.join("\n"));
+  });
+
+  it("leaves quotation wording alone outside an order confirmation", async () => {
+    useApi(customer, noDocuments, paymentDefault(14));
+    const notes = titles(await runSalesPreflight("quotation", { customer_number: 10001, payment_term_days: 14, introduction: "Unser Angebot, gültig bis 01.01.2020.", items }));
+    assert.ok(!notes.some((note) => /Angebotswortlaut|Frist abgelaufen/.test(note)), notes.join("\n"));
+  });
 });

@@ -620,6 +620,52 @@ export async function prepareSalesDocument(api: LexwareClient, kind: SalesDocume
 
   warnings.push(...(await checkSource(api, kind, input, contact, itemsNet, signal)));
   warnings.push(...(await checkDocumentSettings(api, kind, input, contact, signal)));
+  if (kind === "order-confirmation") warnings.push(...checkQuotationWording(input));
+  return warnings;
+}
+
+/**
+ * Texts copied from a quotation keep what only fits the quotation: „dieses
+ * Angebots“, or an acceptance deadline („sofern der Auftrag bis zum … erteilt
+ * wird“) that has passed by the confirmation's date. The card names where.
+ */
+export function checkQuotationWording(input: SalesInput): Warning[] {
+  const texts: [string, string | undefined][] = [
+    ["Titel", input.title],
+    ["Einleitung", input.introduction],
+    ["Bemerkung", input.remark],
+    ["Lieferbedingung", input.delivery_terms],
+    ...(input.items ?? []).flatMap((item): [string, string | undefined][] => [
+      [`„${item.name}“`, item.name],
+      [`„${item.name}“`, item.description],
+    ]),
+  ];
+  const voucherDate = input.voucher_date ?? berlinToday();
+  const quotation = new Set<string>();
+  const passed: string[] = [];
+  for (const [where, text] of texts) {
+    if (!text) continue;
+    if (/\bAngebot/.test(text)) quotation.add(where);
+    for (const match of text.matchAll(/\bbis (?:zum |spätestens )?(\d{1,2})\.(\d{1,2})\.(\d{4})/g)) {
+      const date = `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`;
+      if (date < voucherDate) passed.push(`„${match[0]}“ in ${where}`);
+    }
+  }
+  const warnings: Warning[] = [];
+  if (quotation.size > 0) {
+    warnings.push({
+      kind: "note",
+      title: "⚠ Angebotswortlaut",
+      value: `„Angebot“ in ${[...quotation].join(", ")} — in einer AB „Auftrag“ schreiben, außer der Bezug ist gewollt`,
+    });
+  }
+  if (passed.length > 0) {
+    warnings.push({
+      kind: "note",
+      title: "⚠ Frist abgelaufen",
+      value: `${passed.join(", ")} liegt vor dem Belegdatum — Annahmefrist aus dem Angebot? Streichen oder auflösen`,
+    });
+  }
   return warnings;
 }
 

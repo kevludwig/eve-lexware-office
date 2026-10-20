@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.3
+
+### Added
+
+- An order confirmation's card names text copied from a quotation that only fits the quotation: „⚠ Angebotswortlaut“ where title, introduction, remark, delivery terms or a line item still say „Angebot“, and „⚠ Frist abgelaufen“ for a „bis (zum) dd.mm.yyyy“ before the voucher date, such as an acceptance deadline.
+- `verkaufsbelege` skill: an order confirmation from a quotation adapts quotation-only wording („dieses Angebots“ → „dieses Auftrags“, no acceptance deadline); without `delivery_terms` Lexware Office prints the account's default delivery terms.
+
 ## 0.6.2
 
 ### Changed
