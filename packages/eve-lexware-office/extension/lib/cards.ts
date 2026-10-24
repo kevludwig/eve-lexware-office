@@ -16,6 +16,13 @@ import { describeWarning, type Warning } from "./warnings";
 type Builder = (input: Record<string, unknown>, reserved: number) => Omit<ApprovalCard, "tool" | "findings">;
 
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {});
+
+/** "Zusatz, Straße, PLZ Ort, Land" — the country only when not DE. */
+function addressLine(supplement: unknown, street: unknown, zip: unknown, city: unknown, country: unknown): string {
+  const land = text(country).toUpperCase();
+  return [text(supplement), text(street), [text(zip), text(city)].filter(Boolean).join(" "), land && land !== "DE" ? land : ""].filter(Boolean).join(", ");
+}
 
 /**
  * Text a card may carry in all — Teams cuts a TextBlock at 4000 characters and
@@ -224,17 +231,60 @@ const BUILDERS: Record<string, Builder> = {
   create_purchase_invoice: purchaseCard,
 
   create_customer(input) {
-    const name = text(input.company_name) || [text(input.first_name), text(input.last_name)].filter(Boolean).join(" ") || "ohne Namen";
-    const address = [text(input.street), [text(input.zip), text(input.city)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const name = text(input.company_name) || [text(input.salutation), text(input.first_name), text(input.last_name)].filter(Boolean).join(" ") || "ohne Namen";
+    const person = record(input.contact_person);
+    const contactPerson = [text(person.salutation), text(person.first_name), text(person.last_name)].filter(Boolean).join(" ");
+    const shipping = record(input.shipping_address);
+    const xrechnung = record(input.xrechnung);
+    const optional = (title: string, value: unknown) => (text(value) ? [{ title, value: text(value) }] : []);
     return {
       title: "Kunden anlegen?",
       subtitle: name,
       facts: [
         { title: "Name", value: name },
-        ...(address ? [{ title: "Adresse", value: address }] : []),
-        ...(text(input.email) ? [{ title: "E-Mail", value: text(input.email) }] : []),
-        ...(text(input.phone) ? [{ title: "Telefon", value: text(input.phone) }] : []),
+        ...(input.company_name ? [] : [{ title: "Art", value: "Privatperson" }]),
+        ...(contactPerson
+          ? [
+              {
+                title: "Ansprechpartner",
+                value: contactPerson + (person.on_documents === false ? " (nicht auf Belegen)" : " (auf Belegen)"),
+              },
+            ]
+          : []),
+        ...optional("Ansprechpartner: E-Mail", person.email),
+        ...optional("Ansprechpartner: Telefon", person.phone),
+        { title: "Adresse", value: addressLine(input.address_supplement, input.street, input.zip, input.city, input.country_code) || "fehlt" },
+        ...(Object.keys(shipping).length > 0
+          ? [{ title: "Lieferadresse", value: addressLine(shipping.supplement, shipping.street, shipping.zip, shipping.city, shipping.country_code) }]
+          : []),
+        ...optional("Steuernummer", input.tax_number),
+        ...optional("USt-IdNr.", input.vat_id),
+        ...(input.allow_tax_free_invoices === true ? [{ title: "Steuerfreie Rechnungen", value: "erlaubt" }] : []),
+        ...(text(xrechnung.buyer_reference)
+          ? [{ title: "XRechnung", value: `Leitweg-ID ${text(xrechnung.buyer_reference)}, Lieferantennr. ${text(xrechnung.vendor_number_at_customer)}` }]
+          : []),
+        ...optional("E-Mail", input.email),
+        ...optional("E-Mail Büro", input.email_office),
+        ...optional("E-Mail privat", input.email_private),
+        ...optional("E-Mail andere", input.email_other),
+        ...optional("Telefon", input.phone),
+        ...optional("Telefon Büro", input.phone_office),
+        ...optional("Telefon mobil", input.phone_mobile),
+        ...optional("Telefon privat", input.phone_private),
+        ...optional("Fax", input.phone_fax),
+        ...optional("Telefon andere", input.phone_other),
+        ...(text(input.note) ? [{ title: "Notiz", value: cut(text(input.note), 200) }] : []),
       ],
+    };
+  },
+
+  update_customer(input) {
+    const who = typeof input.customer_number === "number" ? `Kundennummer ${input.customer_number}` : text(input.contact_id) || "unbekannter Kontakt";
+    return {
+      title: "Kunden ändern?",
+      subtitle: who,
+      facts: [{ title: "Kunde", value: who }],
+      note: "Geändert wird nur, was unten mit altem und neuem Wert steht. Wurde der Kontakt inzwischen in Lexware Office bearbeitet, bricht die Änderung ab.",
     };
   },
 

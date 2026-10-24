@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0
+
+### Added
+
+- `update_customer`: changes a customer by `customer_number` or `contact_id` — only the fields given, `null` removes, groups merged field by field. The card lists each field with its old and new value; the approved write goes out with the version the card showed and stops ("Abgebrochen") when the contact was edited since. Contacts the API will not update (more than one address, contact person or entry per type), an unknown customer number, and a change that changes nothing are refused before a card.
+- `create_customer` takes every writable field of the contacts endpoint: `tax_number`, `vat_id`, `allow_tax_free_invoices` and `contact_person` (salutation, names, email, phone, `on_documents` — default yes) for a company; `salutation` for a person; `address_supplement`, `shipping_address`, `xrechnung` (Leitweg-ID and vendor number), email addresses and phone numbers per type, and `note`. Person fields on a company and company fields on a person are refused by the schema.
+- The customer card shows contact person, shipping address, tax fields, XRechnung, every email address and phone number, and the note.
+- `./operations`: `customerUpdateInputSchema`, `prepareCustomerUpdate`, `executeApprovedCustomerUpdate`, `customerChangesOf`, `CONTACT_FIELD_LABEL`, and the descriptions `customerDescription` and `customerUpdateDescription`.
+- Finding `contact-change` (a field with its old and new value).
+
+### Changed
+
+- `create_customer`'s description says that a company's person is its contact person, never `first_name`/`last_name`, and that `update_customer` changes an existing customer. The `verkaufsbelege` skill explains creating and changing customers.
+- Needs `@kevludwig/lexware-office` 0.5.0.
+
 ## 0.6.3
 
 ### Added

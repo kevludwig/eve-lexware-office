@@ -13,7 +13,22 @@
  */
 
 export { buildCard } from "./cards";
-export { customerInputSchema, executeApprovedCustomer, prepareCustomer, type CustomerInput, type PreparedCustomer } from "./customer";
+export {
+  CONTACT_FIELD_LABEL,
+  customerChangesOf,
+  customerDescription,
+  customerInputSchema,
+  customerUpdateDescription,
+  customerUpdateInputSchema,
+  executeApprovedCustomer,
+  executeApprovedCustomerUpdate,
+  prepareCustomer,
+  prepareCustomerUpdate,
+  type CustomerInput,
+  type CustomerUpdateInput,
+  type PreparedCustomer,
+  type PreparedCustomerUpdate,
+} from "./customer";
 export { describeWarning, type Warning } from "./warnings";
 export { journalIn, type Journal, type JournalEntry } from "./journal-store";
 export { readAccount, readDescription, readInputSchema, type ReadInput } from "./read";

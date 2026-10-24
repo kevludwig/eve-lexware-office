@@ -18,6 +18,8 @@ export type Warning =
   | { kind: "duplicate-check-incomplete"; reason: string }
   | { kind: "sales-contact"; reason: string }
   | { kind: "customer-resolved"; name: string; number?: number }
+  // Customers: one changed field of a contact, values as text ("" for empty)
+  | { kind: "contact-change"; label: string; before: string; after: string }
   | { kind: "source-resolved"; sourceLabel: string; contactName?: string }
   | { kind: "source-mismatch"; sourceLabel: string; sourceNet: number; itemsNet: number; difference: number }
   | { kind: "source-discount"; sourceLabel: string; discountAbsolute?: number; discountPercentage?: number; sourceNet?: number }
@@ -74,6 +76,8 @@ export function describeWarning(warning: Warning): Finding {
       return { title: "⚠ Kunde", value: warning.reason };
     case "customer-resolved":
       return { title: "Kunde", value: warning.number !== undefined ? `${warning.name} (Nr. ${warning.number})` : warning.name };
+    case "contact-change":
+      return { title: warning.label, value: `${warning.before || "—"} → ${warning.after || "—"}` };
     case "source-resolved":
       return { title: "Bezugsbeleg", value: warning.contactName ? `${warning.sourceLabel} (${warning.contactName})` : warning.sourceLabel };
     case "source-mismatch":

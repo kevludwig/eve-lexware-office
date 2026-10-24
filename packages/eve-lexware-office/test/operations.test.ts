@@ -109,3 +109,102 @@ describe("customers without eve", () => {
     assert.equal(created.contactId, "c-2");
   });
 });
+
+describe("customer fields without eve", () => {
+  it("sends a company with its contact person on vouchers", async () => {
+    let body: Record<string, unknown> | undefined;
+    const { client } = api((method, path, sent) => {
+      if (method === "GET" && path === "/contacts") return { content: [] };
+      if (method === "POST" && path === "/contacts") {
+        body = sent as Record<string, unknown>;
+        return { id: "c-3" };
+      }
+      if (method === "GET" && path === "/contacts/c-3") return { ...customer, id: "c-3", roles: { customer: { number: 10003 } } };
+      return undefined;
+    });
+    const input = ops.customerInputSchema.parse({
+      company_name: "Beispiel GmbH",
+      vat_id: "DE123456789",
+      contact_person: { first_name: "Erika", last_name: "Muster" },
+      street: "Musterstraße 1",
+      zip: "12345",
+      city: "Musterstadt",
+      email: "info@example.com",
+      phone_mobile: "0151 0000000",
+    });
+    await ops.executeApprovedCustomer({ client, journal: ops.journalIn(memoryStore()) }, input, { id: "a-3", shownContactIds: [] });
+
+    assert.deepEqual(body!.company, {
+      name: "Beispiel GmbH",
+      vatRegistrationId: "DE123456789",
+      contactPersons: [{ firstName: "Erika", lastName: "Muster", primary: true }],
+    });
+    assert.deepEqual(body!.emailAddresses, { business: ["info@example.com"] });
+    assert.deepEqual(body!.phoneNumbers, { mobile: ["0151 0000000"] });
+  });
+
+  it("refuses person fields on a company and company fields on a person", () => {
+    const address = { street: "Musterstraße 1", zip: "12345", city: "Musterstadt" };
+    assert.equal(ops.customerInputSchema.safeParse({ company_name: "Beispiel GmbH", first_name: "Erika", ...address }).success, false);
+    assert.equal(ops.customerInputSchema.safeParse({ last_name: "Muster", vat_id: "DE123456789", ...address }).success, false);
+    assert.equal(ops.customerInputSchema.safeParse({ last_name: "Muster", salutation: "Frau", ...address }).success, true);
+  });
+});
+
+describe("customer changes without eve", () => {
+  const stored = {
+    ...customer,
+    version: 7,
+    addresses: { billing: [{ street: "Musterstraße 1", zip: "12345", city: "Musterstadt", countryCode: "DE" }] },
+  };
+
+  it("shows each changed field and writes with the version the card showed", async () => {
+    let version = 7;
+    let put: Record<string, unknown> | undefined;
+    const { client } = api((method, path, sent) => {
+      if (method === "GET" && path === "/contacts") return { content: [stored] };
+      if (method === "GET" && path === "/contacts/c-1") return { ...stored, version };
+      if (method === "PUT" && path === "/contacts/c-1") {
+        put = sent as Record<string, unknown>;
+        version = 8;
+        return { id: "c-1", version: 8 };
+      }
+      return undefined;
+    });
+    const input = ops.customerUpdateInputSchema.parse({ customer_number: 10001, contact_person: { first_name: "Erika", last_name: "Muster" }, vat_id: "DE123456789" });
+    const prepared = await ops.prepareCustomerUpdate(client, input);
+
+    assert.deepEqual(prepared.binding, { contactId: "c-1", version: 7 });
+    assert.deepEqual(prepared.warnings[0], { kind: "customer-resolved", name: "Beispiel GmbH", number: 10001 });
+    assert.deepEqual(
+      prepared.warnings.slice(1).map((warning: { label: string; before: string; after: string }) => `${warning.label}: ${warning.before} → ${warning.after}`),
+      ["USt-IdNr.:  → DE123456789", "Ansprechpartner: Vorname:  → Erika", "Ansprechpartner: Nachname:  → Muster", "Ansprechpartner auf Belegen:  → ja"],
+    );
+
+    const result = await ops.executeApprovedCustomerUpdate({ client, journal: ops.journalIn(memoryStore()) }, input, { id: "u-1", ...prepared.binding! });
+    assert.equal(put!.version, 7);
+    assert.deepEqual((put!.company as { contactPersons: unknown }).contactPersons, [{ firstName: "Erika", lastName: "Muster", primary: true }]);
+    assert.equal(result.customerNumber, 10001);
+  });
+
+  it("stops when the contact was edited after the card", async () => {
+    const { client, calls } = api((method, path) => (method === "GET" && path === "/contacts/c-1" ? { ...stored, version: 9 } : undefined));
+    const input = ops.customerUpdateInputSchema.parse({ contact_id: "00000000-0000-4000-8000-000000000001", note: "Neu" });
+    await assert.rejects(
+      ops.executeApprovedCustomerUpdate({ client, journal: ops.journalIn(memoryStore()) }, input, { id: "u-2", contactId: "c-1", version: 7 }),
+      /^Error: Abgebrochen/,
+    );
+    assert.equal(calls.filter((call) => call.method === "PUT").length, 0);
+  });
+
+  it("refuses when nothing changes or the contact cannot be found", async () => {
+    const { client } = api((method, path) => {
+      if (method === "GET" && path === "/contacts") return { content: [] };
+      if (method === "GET" && path === "/contacts/c-1") return stored;
+      return undefined;
+    });
+    const unknown = await ops.prepareCustomerUpdate(client, ops.customerUpdateInputSchema.parse({ customer_number: 99999, note: "x" }));
+    assert.match(unknown.refusal!, /99999/);
+    assert.equal(ops.customerUpdateInputSchema.safeParse({ customer_number: 10001 }).success, false);
+  });
+});

@@ -1,6 +1,6 @@
 import { defineTool } from "eve/tools";
 
-import { customerInputSchema, executeApprovedCustomer, prepareCustomer, type CustomerInput } from "../lib/customer";
+import { customerDescription, customerInputSchema, executeApprovedCustomer, prepareCustomer, type CustomerInput } from "../lib/customer";
 import { saveWarnings } from "../lib/findings";
 import { runtimeJournal } from "../lib/journal";
 import { approverPolicy, client } from "../lib/runtime";
@@ -8,11 +8,7 @@ import { rememberShownContacts, shownContactsOf } from "../lib/state";
 import { withCard } from "../lib/with-card";
 
 export default defineTool({
-  description:
-    "Legt einen neuen Kunden in Lexware Office an. Pflicht sind Name (Firma oder Person) UND die Rechnungsadresse " +
-    "(Straße, PLZ, Ort) — fehlt die Adresse, frage sie zuerst beim Nutzer ab. E-Mail und Telefon sind optional. " +
-    "Prüfe vorher mit dem Lese-Tool (/contacts?name=…), ob der Kunde schon existiert — Lexware sucht erst ab 3 Zeichen; " +
-    "kürzere Namen (z. B. „XY“) sind als Kundenname erlaubt, dann ohne Vorabsuche direkt dieses Tool aufrufen. Legt erst nach Freigabe an.",
+  description: customerDescription,
   inputSchema: customerInputSchema,
 
   approval: {

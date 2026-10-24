@@ -186,6 +186,28 @@ describe("approvalCard", () => {
     assert.equal(factOf(card, "E-Mail"), undefined);
   });
 
+  it("shows the contact person of a new company and whether they appear on vouchers", () => {
+    const card = approvalCard("lexware__create_customer", "call", {
+      company_name: "Beispiel GmbH",
+      contact_person: { salutation: "Frau", first_name: "Erika", last_name: "Muster" },
+      street: "Musterstraße 1",
+      zip: "12345",
+      city: "Musterstadt",
+      country_code: "AT",
+      vat_id: "ATU12345678",
+    })!;
+
+    assert.equal(factOf(card, "Ansprechpartner"), "Frau Erika Muster (auf Belegen)");
+    assert.equal(factOf(card, "Adresse"), "Musterstraße 1, 12345 Musterstadt, AT");
+    assert.equal(factOf(card, "USt-IdNr."), "ATU12345678");
+  });
+
+  it("lists each change of a customer with its old and new value", () => {
+    const card = approvalCard("lexware__update_customer", "call", { customer_number: 10001, note: "x" })!;
+    assert.equal(card.title, "Kunden ändern?");
+    assert.equal(card.subtitle, "Kundennummer 10001");
+  });
+
   it("shows invoice, amount and days overdue on a payment reminder", () => {
     const due = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
     const card = approvalCard("lexware__send_payment_reminder", "call", {

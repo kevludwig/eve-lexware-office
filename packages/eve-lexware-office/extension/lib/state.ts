@@ -9,6 +9,27 @@ import { defineState } from "eve/context";
 /** Contacts a customer card showed as similar, by tool call id. */
 const shownContacts = defineState<Record<string, string[]>>("shown-contacts", () => ({}));
 
+/** The contact and version a customer change's card showed, by tool call id. */
+const customerUpdateTargets = defineState<Record<string, { contactId: string; version: number }>>("customer-update-targets", () => ({}));
+
+export function bindCustomerUpdate(callId: string, target: { contactId: string; version: number }): void {
+  // The approval was bound to the version the card showed — a recheck must not rebind it.
+  if (settledOf(callId) !== null) return;
+  try {
+    customerUpdateTargets.update((all) => ({ ...all, [callId]: target }));
+  } catch (error) {
+    console.warn(`[lexware] Cannot bind customer change: ${String(error)}`);
+  }
+}
+
+export function boundCustomerUpdate(callId: string): { contactId: string; version: number } | null {
+  try {
+    return customerUpdateTargets.get()[callId] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** What a payment reminder's approval was bound to, by tool call id. */
 const reminderTargets = defineState<Record<string, ReminderTarget>>("reminder-targets", () => ({}));
 

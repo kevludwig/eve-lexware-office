@@ -31,7 +31,7 @@ describe("./operations without eve", () => {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
-    for (const name of ["buildCard", "prepareSalesDocument", "executeApprovedSalesDocument", "prepareCustomer", "executeApprovedCustomer", "journalIn", "readAccount", "withSource"]) {
+    for (const name of ["buildCard", "prepareSalesDocument", "executeApprovedSalesDocument", "prepareCustomer", "executeApprovedCustomer", "prepareCustomerUpdate", "executeApprovedCustomerUpdate", "journalIn", "readAccount", "withSource"]) {
       assert.ok(exported.split(",").includes(name), `exports ${name}`);
     }
   });
