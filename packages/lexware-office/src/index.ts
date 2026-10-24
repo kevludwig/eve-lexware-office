@@ -11,15 +11,33 @@ export {
 } from "./client.ts";
 export {
   contactEmail,
+  contactProblems,
   createCustomer,
+  EMAIL_TYPES,
   findContactByNumber,
   findContactsByName,
+  getContactDetails,
+  MAX_NOTE_LENGTH,
+  MAX_SALUTATION_LENGTH,
   MIN_NAME_SEARCH_LENGTH,
   getContact,
+  PHONE_TYPES,
+  planCustomerUpdate,
   resolveContactByName,
+  updateBlockers,
+  updateCustomer,
+  type AddressInput,
   type Contact,
+  type ContactAddress,
+  type ContactChange,
+  type ContactDetails,
+  type ContactPerson,
   type CreatedCustomer,
+  type CustomerChanges,
+  type EmailType,
   type NewCustomer,
+  type PhoneType,
+  type UpdatedCustomer,
 } from "./contacts.ts";
 export { addDays, berlinDay, daysSince } from "./dates.ts";
 export {

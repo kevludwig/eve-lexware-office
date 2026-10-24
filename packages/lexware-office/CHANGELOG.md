@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+### Added
+
+- `createCustomer` takes every writable field of the contacts endpoint: `company.taxNumber`, `company.vatRegistrationId` (spaces removed), `company.allowTaxFreeInvoices`, `company.contactPerson` (salutation, first and last name, `primary` — shown on vouchers —, email, phone), `person.salutation`, `shippingAddress`, `xRechnung` (`buyerReference`, `vendorNumberAtCustomer`), and `emailAddresses` / `phoneNumbers` with one entry per type. `email` and `phone` stay as shortcuts for the business entries.
+- `getContactDetails` returns a contact with every documented property, typed as `ContactDetails`.
+- `updateCustomer(client, id, changes, { expectedVersion })`: reads the contact, applies `CustomerChanges` field by field (left out keeps, `null` removes), and writes it back with its version. A contact changed since `expectedVersion` is not written; the error starts with "Abgebrochen".
+- `planCustomerUpdate` returns the PUT body and the changed fields (`ContactChange`) without writing; `updateBlockers` names the lists with more than one entry, which the API does not update.
+- `contactProblems` names what the API would reject — company and person together, a salutation over 25 or a note over 1000 characters, more than one contact person, address or entry per type, a country code that is not ISO 3166-1 alpha-2, a Leitweg-ID without the vendor number — and `createCustomer` throws on it before sending.
+- `EMAIL_TYPES`, `PHONE_TYPES`, `MAX_SALUTATION_LENGTH`, `MAX_NOTE_LENGTH`.
+
 ## 0.4.2
 
 ### Added
