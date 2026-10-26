@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+### Changed
+
+- Built with eve 0.83, which requires eve 0.83 or newer (state contract v16). eve 0.83 no longer loads extensions that require state contract v13, the one 0.7.0 and earlier were built with.
+
 ## 0.7.0
 
 ### Added
