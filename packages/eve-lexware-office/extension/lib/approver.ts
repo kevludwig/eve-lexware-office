@@ -6,11 +6,11 @@ import type { CanApprove, Responder } from "./types";
  * Decides one approval response. With the mount's canApprove, that decides:
  * it receives the responder and eve's whole response context — who requested
  * the call (`request.principal`), who started the session
- * (`session.initiator`), and whether the answer is approve or cancel
+ * (`session.initiator`), and whether the answer is approve or deny
  * (`response.decision`).
  *
  * Without canApprove, eve's own default applies: only the principal whose
- * turn requested the call may approve or cancel it. A call requested by an
+ * turn requested the call may approve or deny it. A call requested by an
  * unauthenticated or anonymous caller (`request.principal` is null) stays open
  * to any responder, as in eve.
  */

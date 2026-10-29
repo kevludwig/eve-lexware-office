@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+### Changed
+
+- Requires eve 0.88 or newer: built with eve 0.88, whose session stream uses v27 facts. eve 0.84 and later no longer load extensions built for 0.83.
+- `onApprovalCard` is called on `interaction.opened` for approvals (was `input.requested`); tool name and input come from the session view.
+- A declined payment reminder is recorded on `call.settled` with outcome `rejected` (was `action.result` with status `rejected`), whether a person or a policy denied it.
+- `canApprove` receives `response.decision` as `"approve"` or `"deny"` (eve renamed `"cancel"` to `"deny"`).
+
 ## 0.7.1
 
 ### Changed

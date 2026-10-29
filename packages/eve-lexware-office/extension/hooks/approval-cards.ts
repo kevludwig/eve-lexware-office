@@ -1,3 +1,4 @@
+import { call } from "eve/events";
 import { defineHook } from "eve/hooks";
 
 import { approvalCard } from "../lib/call-card";
@@ -11,20 +12,19 @@ import { config } from "../lib/runtime";
  */
 export default defineHook({
   events: {
-    async "input.requested"(event) {
+    async "interaction.opened"(event, ctx) {
       const onApprovalCard = config().onApprovalCard;
       if (!onApprovalCard) return;
-      for (const request of event.data.requests) {
-        if (request.kind !== "tool-approval") continue;
-        const action = request.action as { callId?: string; toolName?: string; input?: unknown };
-        if (!action.callId || !action.toolName) continue;
-        const card = approvalCard(action.toolName, action.callId, action.input);
-        if (!card) continue;
-        try {
-          await onApprovalCard(action.callId, card);
-        } catch (error) {
-          console.warn(`[lexware] onApprovalCard failed for ${action.callId}: ${String(error)}`);
-        }
+      if (event.data.request.kind !== "approval" || !("callId" in event.data.subject)) return;
+      const callId = event.data.subject.callId;
+      const action = call(ctx.view, callId);
+      if (!action) return;
+      const card = approvalCard(action.name, callId, action.input);
+      if (!card) return;
+      try {
+        await onApprovalCard(callId, card);
+      } catch (error) {
+        console.warn(`[lexware] onApprovalCard failed for ${callId}: ${String(error)}`);
       }
     },
   },

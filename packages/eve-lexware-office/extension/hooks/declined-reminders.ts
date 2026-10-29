@@ -14,10 +14,9 @@ import { EARLY_TITLE } from "../lib/warnings";
  */
 export default defineHook({
   events: {
-    async "action.result"(event) {
-      if (event.data.status !== "rejected") return;
-      const callId = "callId" in event.data.result ? event.data.result.callId : undefined;
-      if (typeof callId !== "string") return;
+    async "call.settled"(event) {
+      if (event.data.outcome !== "rejected") return;
+      const callId = event.data.callId;
       const target = boundReminderTarget(callId);
       if (!target) return;
       const early = warningsOf(callId).some((warning) => warning.kind === "note" && warning.title === EARLY_TITLE);

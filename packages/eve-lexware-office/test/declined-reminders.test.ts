@@ -17,8 +17,8 @@ mock.module(new URL("../dist/extension/lib/state.mjs", import.meta.url).href, {
 
 const { default: hook } = await import("../dist/extension/hooks/declined-reminders.mjs");
 const declined = (callId: string) =>
-  (hook as { events: Record<string, (event: unknown) => Promise<void>> }).events["action.result"]!({
-    data: { status: "rejected", result: { callId } },
+  (hook as { events: Record<string, (event: unknown) => Promise<void>> }).events["call.settled"]!({
+    data: { outcome: "rejected", callId },
   });
 
 describe("declined reminders", () => {

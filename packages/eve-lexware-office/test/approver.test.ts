@@ -13,12 +13,12 @@ const other = person("ben");
 function context(
   responder: Person,
   initiator: Person | null,
-  decision: "approve" | "cancel" = "approve",
+  decision: "approve" | "deny" = "approve",
   requester: Person | null = initiator,
 ) {
   return {
     auth: {},
-    request: { callId: "call-1", requestId: "req-1", principal: requester, toolName: "lexware__create_invoice", toolInput: {} },
+    request: { callId: "call-1", interactionId: "req-1", principal: requester, toolName: "lexware__create_invoice", toolInput: {} },
     response: { decision, principal: responder },
     session: { id: "session-1", initiator, turn: { id: "turn-1" } },
   };
@@ -31,14 +31,14 @@ const ownsSession = (responder: Person, ctx: { session: { initiator: Person | nu
   ctx.session.initiator.principalId === responder.principalId;
 
 describe("default without canApprove: requester only, as in eve", () => {
-  it("allows the requester to approve and to cancel", async () => {
+  it("allows the requester to approve and to deny", async () => {
     assert.deepEqual(await decideApproval(undefined, context(owner, owner)), { status: "allowed" });
-    assert.deepEqual(await decideApproval(undefined, context(owner, owner, "cancel")), { status: "allowed" });
+    assert.deepEqual(await decideApproval(undefined, context(owner, owner, "deny")), { status: "allowed" });
   });
 
-  it("refuses anyone else, for approve and for cancel", async () => {
+  it("refuses anyone else, for approve and for deny", async () => {
     assert.equal((await decideApproval(undefined, context(other, owner))).status, "rejected");
-    assert.equal((await decideApproval(undefined, context(other, owner, "cancel"))).status, "rejected");
+    assert.equal((await decideApproval(undefined, context(other, owner, "deny"))).status, "rejected");
   });
 
   it("follows the requester, not the session's initiator", async () => {
@@ -78,7 +78,7 @@ describe("canApprove", () => {
 
   it("passes the responder and eve's whole context, decision included", async () => {
     const seen: unknown[][] = [];
-    const ctx = context(other, owner, "cancel");
+    const ctx = context(other, owner, "deny");
     await decideApproval(async (...args: unknown[]) => (seen.push(args), true), ctx);
     assert.equal(seen[0]![0], other);
     assert.equal(seen[0]![1], ctx);

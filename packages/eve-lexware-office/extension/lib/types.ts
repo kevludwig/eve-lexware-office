@@ -3,14 +3,14 @@ import type { ApprovalContext, ApprovalResponseContext } from "eve/tools/approva
 import type { Finding } from "./card-types";
 import type { Warning } from "./warnings";
 
-/** Whoever answers an approval (approve or cancel), as the channel authenticated them. */
+/** Whoever answers an approval (approve or deny), as the channel authenticated them. */
 export type Responder = ApprovalResponseContext["response"]["principal"];
 
 /**
- * Who may approve a writing tool, or cancel it. The second argument is eve's
+ * Who may approve a writing tool, or deny it. The second argument is eve's
  * response context: `session.initiator` (who started the session),
  * `request.principal` (whose turn requested the call, null if anonymous),
- * `response.decision` ("approve" or "cancel"), tool name and input.
+ * `response.decision` ("approve" or "deny"), tool name and input.
  */
 export type CanApprove = (responder: Responder, context: ApprovalResponseContext) => boolean | Promise<boolean>;
 

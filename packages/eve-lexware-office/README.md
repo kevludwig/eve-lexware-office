@@ -8,7 +8,7 @@ Built on [`@kevludwig/lexware-office`](../lexware-office), which holds the API c
 npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office zod
 ```
 
-Node 24 or newer, eve 0.83 or newer, zod 4 (a peer dependency, so the schemas the extension exports are your zod's).
+Node 24 or newer, eve 0.88 or newer, zod 4 (a peer dependency, so the schemas the extension exports are your zod's).
 
 ## Mount it
 
@@ -73,7 +73,7 @@ Between card and click, hours can pass, so every writing tool checks again immed
 | `storage.store` | Vercel Blob | Where journal, reminder records, and send claims live. Any `JsonStore`. |
 | `storage.prefix` | `lexware-office` | Key prefix inside the store. |
 | `decide` | — | `({ tool, input, warnings, findings, context })` → `"ask"`, `"approve"`, or `{ deny }` — a rule instead of a person, after the checks. See [Deciding without a person](#deciding-without-a-person). |
-| `canApprove` | the requester only | `(responder, context) => boolean` — who may approve a write or cancel it. See [Who may approve](#who-may-approve). |
+| `canApprove` | the requester only | `(responder, context) => boolean` — who may approve a write or deny it. See [Who may approve](#who-may-approve). |
 | `onApprovalCard` | — | `(callId, card)` with the finished card: title, subtitle, facts, note, findings. For your own UI. |
 | `conversationUrl` | — | `(sessionId) => string`, for "waits in another conversation". |
 | `attachments` | — | A second source for an upload the sandbox lost: `{ read, size?, release? }`. |
@@ -95,7 +95,7 @@ Nothing reads the environment except the Blob store's own token — where the ke
 
 - `context.session.initiator` — who started the session, `null` if anonymous
 - `context.request.principal` — whose turn requested the call, `null` if anonymous
-- `context.response.decision` — `"approve"` or `"cancel"`
+- `context.response.decision` — `"approve"` or `"deny"`
 - `context.request.toolName`, `context.request.toolInput`, `context.session.id`
 
 A `canApprove` that reads only `responder` keeps working. To require that the approver owns the session:
@@ -112,7 +112,7 @@ export default lexware({
 });
 ```
 
-Without `canApprove`, the extension follows eve's default for tools without a response policy: only the principal whose turn requested the call (`context.request.principal`) may approve or cancel it, compared by `authenticator`, `issuer`, `principalType` and `principalId`. A call requested by an unauthenticated or anonymous caller stays open to anyone who can answer in the session. A `canApprove` replaces this default entirely.
+Without `canApprove`, the extension follows eve's default for tools without a response policy: only the principal whose turn requested the call (`context.request.principal`) may approve or deny it, compared by `authenticator`, `issuer`, `principalType` and `principalId`. A call requested by an unauthenticated or anonymous caller stays open to anyone who can answer in the session. A `canApprove` replaces this default entirely.
 
 To let anyone who can answer in the session approve, as before 0.4.0:
 
