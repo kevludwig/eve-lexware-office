@@ -5,6 +5,7 @@ import { ownTool } from "./cards";
 import { warningsOf } from "./findings";
 import { config } from "./runtime";
 import { rememberSettled, settledOf } from "./state";
+import type { DecideCall } from "./types";
 import { describeWarning } from "./warnings";
 
 export interface WithCardOptions<T> {
@@ -29,10 +30,13 @@ const asksPerson = (value: ApprovalStatus) =>
  * delivery, then hooks).
  *
  * eve runs the policy again before an approved call executes (its recheck):
- * the tool's own checks run again and may still deny, but `decide`,
- * onApprovalCard and `onProceed` do not — a person already answered, or
- * `decide` already approved. Session state tells the two runs apart; where
- * it cannot be read, `decide` may be called a second time.
+ * the tool's own checks run again and may still deny. After a person
+ * answered the card, `decide` runs again with `recheck: true` and only a
+ * deny counts — a rule switched off between card and click stops the call;
+ * "ask", "approve" or a throw keep the person's approval. onApprovalCard and
+ * `onProceed` do not run again, and the findings stay those the card showed.
+ * A call `decide` approved is not decided again. Session state tells the two
+ * runs apart; where it cannot be read, `decide` may be called a second time.
  *
  * A `decide` that throws asks a person: it must never approve by accident.
  */
@@ -43,26 +47,30 @@ export function withCard<T>(request: ApprovalPolicy<T>, options: WithCardOptions
 
     // The recheck of a call that was already settled: the checks above passed again.
     const earlier = settledOf(ctx.callId);
-    if (earlier === "ask") return status;
     if (earlier === "approve") return "approved";
 
     const decide = config().decide;
+    if (earlier === "ask") {
+      // A person approved the card; a rule may still have been switched off since.
+      if (!decide) return status;
+      try {
+        const answer = await decide(decideCall(ctx, true));
+        if (isDeny(answer)) return { type: "denied", reason: answer.deny };
+      } catch (error) {
+        console.warn(`[lexware] decide failed on the recheck of ${ctx.callId}, the approval stands: ${String(error)}`);
+      }
+      return status;
+    }
+
     if (decide) {
       try {
-        const warnings = warningsOf(ctx.callId);
-        const answer = await decide({
-          tool: ownTool(ctx.toolName) ?? ctx.toolName,
-          input: ctx.toolInput,
-          warnings,
-          findings: warnings.map(describeWarning),
-          context: ctx as never,
-        });
+        const answer = await decide(decideCall(ctx, false));
         if (answer === "approve") {
           rememberSettled(ctx.callId, "approve");
           await proceed(options, ctx);
           return "approved";
         }
-        if (typeof answer === "object" && answer !== null && typeof answer.deny === "string") return { type: "denied", reason: answer.deny };
+        if (isDeny(answer)) return { type: "denied", reason: answer.deny };
       } catch (error) {
         console.warn(`[lexware] decide failed for ${ctx.callId}, a person decides: ${String(error)}`);
       }
@@ -86,6 +94,22 @@ export function withCard<T>(request: ApprovalPolicy<T>, options: WithCardOptions
     return status;
   };
 }
+
+function decideCall<T>(ctx: ApprovalContext<T>, recheck: boolean): DecideCall {
+  // On the recheck these are the findings the card showed: state keeps the first snapshot.
+  const warnings = warningsOf(ctx.callId);
+  return {
+    tool: ownTool(ctx.toolName) ?? ctx.toolName,
+    input: ctx.toolInput,
+    warnings,
+    findings: warnings.map(describeWarning),
+    context: ctx as never,
+    recheck,
+  };
+}
+
+const isDeny = (answer: unknown): answer is { deny: string } =>
+  typeof answer === "object" && answer !== null && typeof (answer as { deny?: unknown }).deny === "string";
 
 async function proceed<T>(options: WithCardOptions<T>, ctx: ApprovalContext<T>): Promise<void> {
   try {

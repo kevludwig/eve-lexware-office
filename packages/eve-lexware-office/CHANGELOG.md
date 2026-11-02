@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.1
+
+### Fixed
+
+- A `decide` that denies on eve's recheck stops the call: after a person approved the card, `decide` runs again right before the write, so a rule switched off between card and click no longer lets the call through. Only a deny counts then; `"ask"`, `"approve"` or a throw keep the approval, and the findings stay those the card showed.
+
+### Added
+
+- `recheck` on the call `decide` receives: true on that second run.
+
 ## 0.8.0
 
 ### Changed

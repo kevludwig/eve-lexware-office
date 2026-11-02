@@ -40,6 +40,8 @@ export interface CapturedPurchase {
  * A writing call whose checks are done and that would now ask a person:
  * the tool (without the mount's namespace), its input, and what the checks
  * found. `context` is eve's approval context — session, caller, call id.
+ * `recheck` is true when a person already approved the call's card and eve
+ * checks it again right before it runs: only `{ deny }` counts then.
  */
 export interface DecideCall {
   tool: string;
@@ -47,6 +49,7 @@ export interface DecideCall {
   warnings: readonly Warning[];
   findings: readonly Finding[];
   context: ApprovalContext;
+  recheck: boolean;
 }
 
 /**

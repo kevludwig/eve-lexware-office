@@ -72,7 +72,7 @@ Between card and click, hours can pass, so every writing tool checks again immed
 | `baseUrl`, `appUrl` | the API and app URLs | Only for another environment. |
 | `storage.store` | Vercel Blob | Where journal, reminder records, and send claims live. Any `JsonStore`. |
 | `storage.prefix` | `lexware-office` | Key prefix inside the store. |
-| `decide` | — | `({ tool, input, warnings, findings, context })` → `"ask"`, `"approve"`, or `{ deny }` — a rule instead of a person, after the checks. See [Deciding without a person](#deciding-without-a-person). |
+| `decide` | — | `({ tool, input, warnings, findings, context, recheck })` → `"ask"`, `"approve"`, or `{ deny }` — a rule instead of a person, after the checks. See [Deciding without a person](#deciding-without-a-person). |
 | `canApprove` | the requester only | `(responder, context) => boolean` — who may approve a write or deny it. See [Who may approve](#who-may-approve). |
 | `onApprovalCard` | — | `(callId, card)` with the finished card: title, subtitle, facts, note, findings. For your own UI. |
 | `conversationUrl` | — | `(sessionId) => string`, for "waits in another conversation". |
@@ -143,7 +143,7 @@ Return `"ask"` for the card, `"approve"` to run without one, `{ deny: "reason" }
 
 A call `decide` approves never shows a card: it reaches neither `onApprovalCard` nor `canApprove` — no person answers it, so record it yourself before returning `"approve"`.
 
-eve runs a tool's request policy again right before an approved call executes (its recheck). The tool's own checks run again then and may still refuse; `decide` and `onApprovalCard` do not — the extension marks each call in session state once a person was asked or `decide` approved it. Only where that state cannot be read (no eve session) can `decide` be called a second time for the same `context.callId`, so keep it idempotent: record an approval under the call id, not once per call of `decide`.
+eve runs a tool's request policy again right before an approved call executes (its recheck). The tool's own checks run again then and may still refuse. After a person approved the card, `decide` runs once more with `recheck: true` and the findings the card showed, and only `{ deny }` counts: a rule switched off between card and click stops the call, while `"ask"`, `"approve"` or a throw leave the person's approval standing — so do not record a rule approval when `recheck` is true. `onApprovalCard` does not run again, and a call `decide` approved is not decided a second time — the extension marks each call in session state once a person was asked or `decide` approved it. Only where that state cannot be read (no eve session) can `decide` be called a second time with `recheck: false` for the same `context.callId`, so keep it idempotent: record an approval under the call id, not once per call of `decide`.
 
 ## Without eve: `./operations`
 

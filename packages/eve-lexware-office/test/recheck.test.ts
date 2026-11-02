@@ -1,7 +1,8 @@
 /**
  * eve runs a tool's request policy again before an approved call executes
- * (its recheck). A person already answered: `decide` and onApprovalCard must
- * not run again, and the tool's own checks may still refuse.
+ * (its recheck). A person already answered: onApprovalCard must not run
+ * again, `decide` may only still deny (a rule switched off between card and
+ * click), and the tool's own checks may still refuse.
  */
 
 import assert from "node:assert/strict";
@@ -43,28 +44,43 @@ beforeEach(() => {
 });
 
 describe("the recheck of a settled call", () => {
-  it("skips decide and the card once a person was asked", async () => {
+  it("skips the card once a person was asked, and a decide that now asks or approves changes nothing", async () => {
     useApi(on("GET", /^\/contacts$/, () => ({ content: [] })));
-    let decided = 0;
+    const seen: boolean[] = [];
     let cards = 0;
-    useConfig({ decide: () => (decided++, "ask"), onApprovalCard: () => void cards++ });
+    useConfig({ decide: (call: { recheck: boolean }) => (seen.push(call.recheck), "ask"), onApprovalCard: () => void cards++ });
 
     assert.equal(await customer(), "user-approval");
-    assert.deepEqual([decided, cards], [1, 1]);
+    assert.deepEqual([seen, cards], [[false], 1]);
 
-    // A decide that would now approve or deny is not asked: a person answers this call.
-    useConfig({ decide: () => (decided++, { deny: "now refused" }), onApprovalCard: () => void cards++ });
     assert.equal(await customer(), "user-approval");
-    assert.deepEqual([decided, cards], [1, 1]);
+    useConfig({ decide: (call: { recheck: boolean }) => (seen.push(call.recheck), "approve"), onApprovalCard: () => void cards++ });
+    assert.equal(await customer(), "user-approval");
+    assert.deepEqual([seen, cards], [[false, true, true], 1]);
   });
 
-  it("skips the card without decide, too", async () => {
+  it("stops the call when decide denies on the recheck", async () => {
     useApi(on("GET", /^\/contacts$/, () => ({ content: [] })));
     let cards = 0;
-    useConfig({ onApprovalCard: () => void cards++ });
-    await customer();
-    await customer();
+    useConfig({ decide: () => "ask", onApprovalCard: () => void cards++ });
+    assert.equal(await customer(), "user-approval");
+
+    // The rule was switched off between card and click.
+    useConfig({ decide: () => ({ deny: "rule switched off" }), onApprovalCard: () => void cards++ });
+    assert.deepEqual(await customer(), { type: "denied", reason: "rule switched off" });
     assert.equal(cards, 1);
+  });
+
+  it("keeps the approval when decide throws on the recheck", async () => {
+    useApi(on("GET", /^\/contacts$/, () => ({ content: [] })));
+    useConfig({ decide: () => "ask" });
+    assert.equal(await customer(), "user-approval");
+    useConfig({
+      decide: () => {
+        throw new Error("rules unreadable");
+      },
+    });
+    assert.equal(await customer(), "user-approval");
   });
 
   it("does not run decide twice for a call it approved", async () => {
