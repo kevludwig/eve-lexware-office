@@ -81,10 +81,44 @@ describe("approvalCard", () => {
     assert.equal(factOf(card, "Einleitung"), "eigener Text (12 Zeichen)");
     assert.equal(factOf(card, "Schlussnotiz"), "Standard aus Lexware Office");
     const titles = card.facts.map((fact) => fact.title);
-    assert.deepEqual(titles.slice(titles.indexOf("Schlussnotiz") + 1), ["▸ Teil 1: Festpreis", "1. Workshop-Tag", "2. Anreisepauschale", "Optional 3. Wartung"]);
+    assert.deepEqual(titles.slice(titles.indexOf("Schlussnotiz") + 1), ["▸ Teil 1: Festpreis", "1. Workshop-Tag", "2. Anreisepauschale", "O1. Wartung"]);
     assert.equal(factOf(card, "▸ Teil 1: Festpreis"), "Leistungen mit festem Umfang auf Basis der genannten Annahm…");
     assert.equal(factOf(card, "1. Workshop-Tag"), "2 Tag × 1.200,00 EUR · Enthalten:");
-    assert.equal(factOf(card, "Optional 3. Wartung"), "1 Monat × 50,00 EUR");
+    assert.equal(factOf(card, "O1. Wartung"), "1 Monat × 50,00 EUR");
+  });
+
+  it("numbers optional positions O1, O2 … apart from the regular ones, as Lexware Office prints them", () => {
+    const card = approvalCard("lexware__create_quotation", "call", {
+      customer_number: 10001,
+      items: [
+        { name: "Einrichtung", quantity: 1, unit: "Pauschale", net_price: 500, tax_rate: 19, alternatives: [{ name: "Einrichtung Plus", quantity: 1, unit: "Pauschale", net_price: 800, tax_rate: 19 }] },
+        { name: "Schulung", quantity: 1, unit: "Tag", net_price: 900, tax_rate: 19, optional: true },
+        { name: "Betreuung", quantity: 4, unit: "Stunde", net_price: 100, tax_rate: 19 },
+        { name: "Wartung", quantity: 12, unit: "Monat", net_price: 50, tax_rate: 19, optional: true },
+      ],
+    })!;
+
+    const titles = card.facts.map((fact) => fact.title);
+    assert.deepEqual(titles.slice(titles.indexOf("Schlussnotiz") + 1), [
+      "1. Einrichtung",
+      "Alternative zu 1. Einrichtung Plus",
+      "2. Betreuung",
+      "O1. Schulung",
+      "O2. Wartung",
+    ]);
+    assert.equal(factOf(card, "O2. Wartung"), "12 Monat × 50,00 EUR");
+  });
+
+  it("names the optional position an alternative belongs to by its O number", () => {
+    // The tool schemas refuse alternatives on an optional line; the card still names them right.
+    const card = approvalCard("lexware__create_quotation", "call", {
+      customer_number: 10001,
+      items: [
+        items[0],
+        { name: "Wartung", quantity: 1, unit: "Monat", net_price: 50, tax_rate: 19, optional: true, alternatives: [{ name: "Wartung Plus", quantity: 1, unit: "Monat", net_price: 80, tax_rate: 19 }] },
+      ],
+    })!;
+    assert.equal(factOf(card, "Alternative zu O1. Wartung Plus"), "1 Monat × 80,00 EUR · nicht in der Summe");
   });
 
   it("stays within the card budget with 300 long positions", () => {
@@ -117,9 +151,9 @@ describe("approvalCard", () => {
     ];
     const card = approvalCard("lexware__create_quotation", "call", { customer_number: 10001, items: lines, introduction: "x".repeat(877), remark: "x".repeat(1201), draft: true })!;
 
-    assert.equal(card.facts.filter((fact) => /^(▸ |\d+\. |Optional \d)/.test(fact.title)).length, 14);
+    assert.equal(card.facts.filter((fact) => /^(▸ |O?\d+\. )/.test(fact.title)).length, 14);
     assert.ok(!card.facts.some((fact) => fact.title === "…"));
-    assert.equal(factOf(card, "Optional 11. Wartung")?.startsWith("1 Monat × 50,00 EUR · "), true);
+    assert.equal(factOf(card, "O1. Wartung")?.startsWith("1 Monat × 50,00 EUR · "), true);
   });
 
   it("says an invoice stays a draft", () => {

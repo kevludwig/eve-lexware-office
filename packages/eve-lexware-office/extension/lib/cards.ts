@@ -53,8 +53,9 @@ const factLength = (facts: readonly { title: string; value: string }[]) => facts
 
 /**
  * The positions in document order — headings as „▸", optional lines in a
- * block of their own after them, each with a cut description. Titles are
- * unique: the web card keys its rows by them.
+ * block of their own after them, each with a cut description. Numbered as
+ * Lexware Office prints them: regular positions 1…n, optional ones O1, O2 …
+ * Titles are unique: the web card keys its rows by them.
  */
 function lineFacts(items: readonly LineItem[], budget: number): { title: string; value: string }[] {
   const used = new Set<string>();
@@ -64,15 +65,16 @@ function lineFacts(items: readonly LineItem[], budget: number): { title: string;
     used.add(candidate);
     return candidate;
   };
-  let number = 0;
+  let regular = 0;
+  let optional = 0;
   const priceOf = (item: Omit<PricedLineItem, "alternatives">) =>
     `${quantity(item.quantity)} ${item.unit} × ${item.grossPrice !== undefined ? `${eur(item.grossPrice)} brutto` : eur(item.netPrice)}` +
     (item.discountPercentage ? ` − ${quantity(item.discountPercentage)} %` : "");
-  const describe = (item: LineItem, prefix = "") => {
+  const describe = (item: LineItem) => {
     if (!isPricedLine(item)) return [{ title: unique(`▸ ${cut(item.name, NAME_PREVIEW)}`), value: preview(item.description) || "Zwischenüberschrift" }];
-    number++;
+    const number = item.optional ? `O${++optional}` : String(++regular);
     const about = preview(item.description);
-    const own = { title: unique(`${prefix}${number}. ${cut(item.name, NAME_PREVIEW)}`), value: about ? `${priceOf(item)} · ${about}` : priceOf(item) };
+    const own = { title: unique(`${number}. ${cut(item.name, NAME_PREVIEW)}`), value: about ? `${priceOf(item)} · ${about}` : priceOf(item) };
     const alternatives = (item.alternatives ?? []).map((alternative) => ({
       title: unique(`Alternative zu ${number}. ${cut(alternative.name, NAME_PREVIEW)}`),
       value: `${priceOf(alternative)} · nicht in der Summe`,
@@ -81,7 +83,7 @@ function lineFacts(items: readonly LineItem[], budget: number): { title: string;
   };
   const all = [
     ...items.filter((item) => !isPricedLine(item) || !item.optional).flatMap((item) => describe(item)),
-    ...items.filter((item) => isPricedLine(item) && item.optional).flatMap((item) => describe(item, "Optional ")),
+    ...items.filter((item) => isPricedLine(item) && item.optional).flatMap((item) => describe(item)),
   ];
   const shown: { title: string; value: string }[] = [];
   for (const fact of all) {
