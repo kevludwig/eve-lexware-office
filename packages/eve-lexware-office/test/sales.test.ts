@@ -155,6 +155,7 @@ describe("executeSalesDocument", () => {
     const result = await executeSalesDocument("quotation", { customer_number: 10001, items }, { callId: "call-1" });
 
     assert.equal(result.documentName, "Angebot AG2026-0099");
+    assert.equal(result.contactId, "c-1");
     assert.equal(result.contactName, "Beispiel GmbH");
     assert.equal(result.netTotal, 2400);
     assert.equal(api.calls.find((call) => call.method === "POST")?.query.get("finalize"), "true");

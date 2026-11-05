@@ -922,6 +922,7 @@ export async function executeApprovedSalesDocument(
     ...detail,
     kind,
     documentName: [label, detail.voucherNumber].filter(Boolean).join(" "),
+    contactId: contact.id,
     contactName: contact.name,
     status: finalize ? "festgeschrieben" : "Entwurf",
     ...counts,

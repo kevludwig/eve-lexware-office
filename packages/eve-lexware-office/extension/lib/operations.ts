@@ -48,6 +48,12 @@ export {
   quotationDescription,
   quotationInputSchema,
   withSource,
+  type InvoiceInput,
+  type OrderConfirmationInput,
+  type QuotationInput,
+  type SalesCheckCall,
+  type SalesChecks,
+  type SalesTool,
 } from "./sales-tools";
 export type { ApprovalCard, Finding } from "./card-types";
 

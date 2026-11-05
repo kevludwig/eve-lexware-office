@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0
+
+### Added
+
+- `checks` in the mount: `({ tool, input, signal }) => Warning[]` adds the host's own findings to `create_quotation`, `create_order_confirmation` and `create_invoice`, after the extension's — on the card, in `onApprovalCard`, in `decide`'s `warnings` and `findings`, and in the result. It runs once per call, before the card; eve's recheck keeps the findings the card showed. A check that throws or returns no list of findings is logged and adds „⚠ Zusatzprüfung: fehlgeschlagen"; the call goes on.
+- The result of an approved quotation, order confirmation or invoice carries the Lexware contact id as `contactId`, next to `contactName` — to link the document to your own records.
+- `./operations`: the types `SalesChecks`, `SalesCheckCall`, `SalesTool`, `QuotationInput`, `OrderConfirmationInput` and `InvoiceInput`.
+
+### Changed
+
+- The card numbers optional positions as Lexware Office prints them: regular positions 1…n, optional ones „O1.", „O2." … (was „Optional 3." continuing the regular numbering). An alternative names its position the same way.
+
 ## 0.8.1
 
 ### Fixed

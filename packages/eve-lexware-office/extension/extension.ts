@@ -2,6 +2,7 @@ import type { JsonStore, LexwareClient, ReminderPolicy, ReminderSender, RenderRe
 import { defineExtension } from "eve/extension";
 import { z } from "zod";
 
+import type { SalesChecks } from "./lib/sales-tools";
 import type { ApprovalCard, AttachmentFallback, CanApprove, CapturedPurchase, Decide } from "./lib/types";
 
 const isFunction = (value: unknown) => typeof value === "function";
@@ -52,6 +53,15 @@ export default defineExtension({
        * itself". Default: every call asks a person. Record what you approve.
        */
       decide: z.custom<Decide>(isFunction).optional(),
+
+      /**
+       * The host's own checks of quotations, order confirmations and invoices:
+       * `({ tool, input, signal }) => Warning[]`, run with the extension's
+       * checks before the card. Their findings show on the card, reach
+       * `decide` and the result like the built-in ones. A check that throws
+       * adds a finding saying it failed.
+       */
+      checks: z.custom<SalesChecks>(isFunction).optional(),
 
       /** Receives the finished approval card of each writing tool, e.g. to show it in a web UI. */
       onApprovalCard: z.custom<(callId: string, card: ApprovalCard) => void | Promise<void>>(isFunction).optional(),

@@ -24,6 +24,7 @@ import {
   shippingFields,
   titleSchema,
 } from "./sales";
+import type { Warning } from "./warnings";
 
 export const quotationInputSchema = z
   .object({
@@ -130,3 +131,25 @@ export const invoiceDescription =
     "source_document_id, wenn die Rechnung aus einem Angebot oder einer AB hervorgeht. Leistungsdatum bzw. -zeitraum " +
     "(service_date / service_period) und Zahlungsziel (payment_term_days) gehören in die Felder, nicht nur in den Text. " +
     "Legt erst nach Freigabe an und prüft vorher auf Dubletten.";
+
+export type QuotationInput = z.output<typeof quotationInputSchema>;
+export type OrderConfirmationInput = z.output<typeof orderConfirmationInputSchema>;
+export type InvoiceInput = z.output<typeof invoiceInputSchema>;
+
+/**
+ * A sales document call the mount's `checks` sees: the tool (without the
+ * mount's namespace) and its input as parsed by the tool's schema.
+ */
+export type SalesCheckCall =
+  | { tool: "create_quotation"; input: QuotationInput; signal?: AbortSignal }
+  | { tool: "create_order_confirmation"; input: OrderConfirmationInput; signal?: AbortSignal }
+  | { tool: "create_invoice"; input: InvoiceInput; signal?: AbortSignal };
+
+export type SalesTool = SalesCheckCall["tool"];
+
+/**
+ * The host's own checks of a sales document, after the extension's: what it
+ * returns joins the findings on the card, in `decide` and in the result —
+ * mostly `{ kind: "note", title, value }`, „⚠ " in the title marks a warning.
+ */
+export type SalesChecks = (call: SalesCheckCall) => readonly Warning[] | Promise<readonly Warning[]>;

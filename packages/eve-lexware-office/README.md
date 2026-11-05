@@ -72,6 +72,7 @@ Between card and click, hours can pass, so every writing tool checks again immed
 | `baseUrl`, `appUrl` | the API and app URLs | Only for another environment. |
 | `storage.store` | Vercel Blob | Where journal, reminder records, and send claims live. Any `JsonStore`. |
 | `storage.prefix` | `lexware-office` | Key prefix inside the store. |
+| `checks` | — | `({ tool, input, signal })` → findings — your own checks of quotations, order confirmations and invoices, shown with the extension's. See [Your own checks](#your-own-checks). |
 | `decide` | — | `({ tool, input, warnings, findings, context, recheck })` → `"ask"`, `"approve"`, or `{ deny }` — a rule instead of a person, after the checks. See [Deciding without a person](#deciding-without-a-person). |
 | `canApprove` | the requester only | `(responder, context) => boolean` — who may approve a write or deny it. See [Who may approve](#who-may-approve). |
 | `onApprovalCard` | — | `(callId, card)` with the finished card: title, subtitle, facts, note, findings. For your own UI. |
@@ -88,6 +89,23 @@ Between card and click, hours can pass, so every writing tool checks again immed
 | `reminders.sender` | — | Name and legal lines under the default mail. |
 
 Nothing reads the environment except the Blob store's own token — where the key, the mailer, and the approval rule come from is the mount's decision.
+
+### Your own checks
+
+`checks` adds findings of your own to `create_quotation`, `create_order_confirmation` and `create_invoice` — rules the extension cannot know, such as a minimum margin or a customer on hold. It runs with the extension's checks before the card; `tool` is the tool's own name, `input` the call's input as the tool's schema parsed it, `signal` the call's abort signal. Return a list of findings (`Warning` from `./operations`), mostly notes — a „⚠ " in the title marks a warning:
+
+```ts
+import type { SalesChecks } from "@kevludwig/eve-lexware-office/operations";
+
+const checks: SalesChecks = async ({ tool, input }) =>
+  tool === "create_quotation" && (await isOnHold(input.customer_number))
+    ? [{ kind: "note", title: "⚠ Kunde gesperrt", value: "Zahlungsrückstand — vor dem Angebot klären" }]
+    : [];
+```
+
+Your findings follow the extension's: on the card and in `onApprovalCard`, in `decide`'s `warnings` and `findings`, and in the tool's result. They inform, they do not refuse — to stop a call, deny it in `decide`. A check that throws, or returns something other than a list of findings, does not stop the call either: it is logged and the card says „⚠ Zusatzprüfung: fehlgeschlagen". `checks` runs once per call, before the card; eve's recheck keeps the findings the card showed and does not ask again.
+
+With `./operations` there is no mount: pass your findings to `buildCard` with the extension's (`buildCard(tool, input, [...warnings, ...yours])`) and keep them with the pending action.
 
 ### Who may approve
 
@@ -177,7 +195,7 @@ await executeApprovedSalesDocument({ client, journal: journalIn(store) }, "order
 });
 ```
 
-Quotations and invoices work the same without `withSource` (`quotationInputSchema`, `invoiceInputSchema`; an invoice's `source_document_id` is already the generic field). `buildCard` returns `null` for a tool name that is not one of the extension's writing tools. For customers, `prepareCustomer` returns `shownContactIds`; pass them to `executeApprovedCustomer` as they are (an array) or as a `Set`. For a change, `prepareCustomerUpdate` returns the warnings (the contact, then each changed field), a `binding` with the contact id and its version, or a `refusal` when there is nothing to approve; pass the binding to `executeApprovedCustomerUpdate`, which stops when the contact's version moved on. The tool descriptions are exported too (`customerDescription`, `customerUpdateDescription`). `store` is any `JsonStore` from `@kevludwig/lexware-office`.
+Quotations and invoices work the same without `withSource` (`quotationInputSchema`, `invoiceInputSchema`; an invoice's `source_document_id` is already the generic field). The result of an approved sales document carries the customer's Lexware contact id as `contactId` next to `contactName`, to link the document to your own records — in the eve tools' result too. `buildCard` returns `null` for a tool name that is not one of the extension's writing tools. For customers, `prepareCustomer` returns `shownContactIds`; pass them to `executeApprovedCustomer` as they are (an array) or as a `Set`. For a change, `prepareCustomerUpdate` returns the warnings (the contact, then each changed field), a `binding` with the contact id and its version, or a `refusal` when there is nothing to approve; pass the binding to `executeApprovedCustomerUpdate`, which stops when the contact's version moved on. The tool descriptions are exported too (`customerDescription`, `customerUpdateDescription`). `store` is any `JsonStore` from `@kevludwig/lexware-office`.
 
 Nothing behind `./operations` loads eve, the mount's configuration or the Vercel Blob store — a server without eve installed can import it (a test checks this with eve made unresolvable). The checks it runs are the eve tools' checks; `decide`, `canApprove` and `onApprovalCard` are the mount's and do not apply here — whoever runs the approval page decides who may approve.
 
@@ -185,7 +203,7 @@ The same checks, card, journal and re-check as the eve tools. Keep the input unc
 
 ## Tests
 
-`npm test` runs 140 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
+`npm test` runs 155 tests against a fake API — no account, no network. They run against the build (`pretest` builds it), so they test what a consumer installs.
 
 ## Not affiliated with Lexware
 

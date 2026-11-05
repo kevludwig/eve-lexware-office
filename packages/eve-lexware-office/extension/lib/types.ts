@@ -15,6 +15,7 @@ export type Responder = ApprovalResponseContext["response"]["principal"];
 export type CanApprove = (responder: Responder, context: ApprovalResponseContext) => boolean | Promise<boolean>;
 
 export type { ApprovalCard, Finding } from "./card-types";
+export type { SalesCheckCall, SalesChecks, SalesTool } from "./sales-tools";
 
 /** A second source for attachments eve staged under /workspace/.eve/attachments/ (before eve 0.70.2: /workspace/attachments/). */
 export interface AttachmentFallback {
