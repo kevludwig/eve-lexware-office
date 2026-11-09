@@ -1,6 +1,6 @@
 {
   "name": "@kevludwig/eve-lexware-office",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
   "eve": {
     "extension": {
@@ -45,7 +45,7 @@
     "zod": "4.6.7"
   },
   "peerDependencies": {
-    "eve": ">=0.88.0",
+    "eve": ">=0.88.0 || ^1.0.0-rc.0",
     "zod": "^4.5.4"
   },
   "description": "eve extension for Lexware Office: read the account, create customers, quotations, order confirmations, invoices and purchase invoices, and send payment reminders — every write behind an approval.",
