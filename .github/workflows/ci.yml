@@ -24,3 +24,36 @@ jobs:
 
       # The extension's tests run against its build; `pretest` builds it.
       - run: pnpm test
+
+  # The newest eve release, beyond the pinned one: an early warning when eve
+  # changes something the extension relies on. It does not block a merge —
+  # the pinned build above is what ships.
+  eve-latest:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Use the newest eve
+        run: |
+          pnpm --filter @kevludwig/eve-lexware-office add -D eve@latest
+          pnpm --filter example-agent add eve@latest
+          pnpm list -r --depth 0 eve
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      - name: Build the example agent (loads the extension)
+        run: pnpm --filter example-agent build
+        env:
+          LEXWARE_API_KEY: build-only-placeholder

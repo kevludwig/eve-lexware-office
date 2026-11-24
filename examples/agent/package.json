@@ -9,8 +9,8 @@
   "dependencies": {
     "@kevludwig/eve-lexware-office": "workspace:*",
     "@kevludwig/lexware-office": "workspace:*",
-    "ai": "7.0.137",
-    "eve": "0.88.1",
+    "ai": "7.0.172",
+    "eve": "1.4.0",
     "zod": "4.5.4"
   },
   "devDependencies": {

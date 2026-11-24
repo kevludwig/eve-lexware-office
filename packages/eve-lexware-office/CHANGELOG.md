@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.0
+
+### Achtung beim Update
+
+- **Requires eve 1.4 or newer.** The extension is built with eve 1.4.0 (was 0.88.1), and eve loads an extension only into the release that built it or a later one — a host on eve 0.x or 1.0–1.3 refuses it („Extension … was built with eve 1.4.0"). Upgrade the host first (eve's guide „Upgrade to 1.0"); hosts that stay on 0.x keep `@kevludwig/eve-lexware-office` ^0.10.0. The peer range is `^1.4.0` (was `>=0.88.0 || ^1.0.0-rc.0`).
+- eve 1.0 gives every agent an `edit_file` tool by default. Hosts that disable `write_file` to keep an agent from writing files must disable `edit_file` too (`agent/tools/edit_file.ts` with `disableTool()`), or set `defaultTools: false`.
+
+### Changed
+
+- Built and tested with eve 1.4.0 and ai 7.0.172. No change to tools, cards, findings or `./operations`.
+
 ## 0.10.0
 
 ### Achtung beim Update

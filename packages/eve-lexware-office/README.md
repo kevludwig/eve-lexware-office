@@ -8,7 +8,7 @@ Built on [`@kevludwig/lexware-office`](../lexware-office), which holds the API c
 npm install @kevludwig/eve-lexware-office @kevludwig/lexware-office zod
 ```
 
-Node 24 or newer, eve 0.88 or newer, zod 4 (a peer dependency, so the schemas the extension exports are your zod's).
+Node 24 or newer, eve 1.4 or newer (the extension is built with 1.4.0, and eve loads an extension only into the release that built it or a later one), zod 4 (a peer dependency, so the schemas the extension exports are your zod's).
 
 ## Mount it
 
