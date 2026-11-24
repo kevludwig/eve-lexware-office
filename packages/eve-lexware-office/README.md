@@ -42,13 +42,15 @@ The file name is the namespace: this mount gives the agent `lexware__read`, `lex
 | `create_customer` | A customer: a company with tax number, VAT ID, „Steuerfreie Rechnung erlauben“ and its contact person (shown on vouchers by default), or a private person with salutation; billing address required, shipping address, XRechnung (Leitweg-ID and vendor number), one email address and phone number per type, and an internal note optional. | yes |
 | `update_customer` | Changes a customer by `customer_number` or `contact_id`: only the fields given, `null` removes. The card shows each field with its old and new value; a contact edited in Lexware Office after the card is not overwritten. Contacts the API will not update (more than one address, contact person or entry per type) are refused with that reason. | yes |
 | `create_quotation` | A quotation as written by hand: positions with a `description`, `type: "text"` headings, `optional` positions outside the total, `alternatives` to a position, `introduction` and `remark`. Finalized on creation, so it gets its number — or a draft with `draft: true`. | yes |
-| `create_order_confirmation` | An order confirmation, optionally following a quotation (`quotation_id`). Descriptions, headings and texts as on a quotation, no optional positions; service or delivery date and `delivery_terms`. Finalized, or a draft with `draft: true`. Lexware Office does not chain it to a quotation with optional positions. | yes |
-| `create_invoice` | An outgoing invoice, optionally following a quotation or order confirmation. Descriptions, headings and texts as above, service date or period, `title`, and a Leitweg-ID override. **Always a draft** — you finalize and send it in Lexware Office. | yes |
+| `create_order_confirmation` | An order confirmation, optionally following a quotation (`quotation_id`). Descriptions, headings and texts as on a quotation, no optional positions; service or delivery date, `delivery_terms`, the customer's order number (`customer_order_number`) and a deviating `delivery_address`. Finalized, or a draft with `draft: true`. Lexware Office does not chain it to a quotation with optional positions. | yes |
+| `create_invoice` | An outgoing invoice, optionally following a quotation or order confirmation. Descriptions, headings and texts as above, service date or period, `title`, a Leitweg-ID override, `customer_order_number` and `delivery_address`. **Always a draft** — you finalize and send it in Lexware Office. | yes |
 
 | `create_purchase_invoice` | A purchase invoice as a voucher, with the original attached, amounts per tax rate, and the posting category. Foreign currency is booked with the amount actually debited. | yes |
 | `send_payment_reminder` | One friendly reminder by mail, with the invoice PDF attached. | yes |
 
 The three sales document tools take the document's other writable fields too: `voucher_date`, a payment term (`payment_term_days`, optional `payment_term_label` and `cash_discount`), `total_discount_percent` or `total_discount_amount`, `discount_percent` per position, `tax_type` (net, gross with `gross_price`, and the vat-free types such as `externalService13b`) with `tax_sub_type` and `tax_note`, `language`, `print_layout` (name or id), and `article_id` per position. Service date and period (`service_date`, `service_period`, `delivery_date`, `delivery_period`, `no_service_date`) exist on order confirmations and invoices only — the API has none on quotations. Left out, Lexware Office's defaults apply: delivery on the voucher date, the contact's payment term or else the account's, net taxation. The card shows each of these, warns about an invoice without a service date (§ 14 (4) No. 6 UStG), names the account's default payment term when none is given, and checks a vat-free tax type against the customer's VAT ID, country, and the account.
+
+**An order from a mail or PDF.** Lexware Office has no field for the customer's order number or for a delivery address on an order confirmation or invoice. `customer_order_number` and `delivery_address` therefore go into the introduction as fixed lines — „Ihre Bestellung Nr. …" first (en: „Your order no. …"), then „Lieferadresse: …" (en: „Delivery address: …"), then the own `introduction` after a blank line; without an own one they replace the account's default text. The 2000 characters of the introduction count all of it. The duplicate check reads the order number back: a document of the same kind for the same customer naming the same number is a duplicate, whatever its total. The approved write is keyed by customer and order number as well — a run after a timeout, or a second approval for the same order whose card did not show the first document, finds that document instead of creating another (unless that draft was deleted in Lexware Office, or Lexware refused the first write). A card that showed it was approved knowingly: then a second document is created. With an order number, a duplicate check that could not read every candidate stops the write unless the card said so. For a vat-free tax type the country check takes the delivery address's country when one is given, and the customer's VAT ID is checked for its member state's form (not with VIES — add that as your own check). A position with `article_id` priced off its article is a finding; Lexware Office keeps the line's own price and discount. Lexware Office never prints a contact's own delivery address on an order confirmation or invoice — when the customer has one and the call names no `delivery_address`, the card says so. On an English document (`language: "en"`) Lexware translates the print and its default texts, but not the account's default payment term: without `payment_term_days` the card warns; with it, the term is phrased in English. Links to created documents are Lexware's own (`…/vouchers#!/VoucherView/Order|Invoice|Quotation/<id>`).
 
 The agent-facing texts — tool descriptions, skills, cards — are **German**.
 
@@ -61,7 +63,7 @@ Two things follow from that:
 - **The model cannot skip a finding.** The checks run server-side in the approval policy, and their results live in session state under the call id — there is no "acknowledged" field in any schema.
 - **What a better call could fix goes back once.** Totals that do not add up, or an ambiguous category, are denied the first time with the reason; if the same call comes back unchanged, the user decides at the card.
 
-Between card and click, hours can pass, so every writing tool checks again immediately before it writes. A document that appeared in the meantime and was *not* on the card stops the write; one that was on the card is a decision already taken. A step that runs again after a crash finds its journal entry and does not create twice.
+Between card and click, hours can pass, so every writing tool checks again immediately before it writes. A document that appeared in the meantime and was *not* on the card stops the write; one that was on the card is a decision already taken. A second search that fails (a 403, the rate limit, a 500) stops the write too — without it nobody knows whether a duplicate appeared; nothing is sent and the error names the reason. A step that runs again after a crash finds its journal entry and does not create twice.
 
 ## Configuration
 
@@ -105,7 +107,7 @@ const checks: SalesChecks = async ({ tool, input }) =>
 
 Your findings follow the extension's: on the card and in `onApprovalCard`, in `decide`'s `warnings` and `findings`, and in the tool's result. They inform, they do not refuse — to stop a call, deny it in `decide`. A check that throws, or returns something other than a list of findings, does not stop the call either: it is logged and the card says „⚠ Zusatzprüfung: fehlgeschlagen". `checks` runs once per call, before the card; eve's recheck keeps the findings the card showed and does not ask again.
 
-With `./operations` there is no mount: pass your findings to `buildCard` with the extension's (`buildCard(tool, input, [...warnings, ...yours])`) and keep them with the pending action.
+With `./operations` there is no mount: hand your checks to `prepareSalesDocument` (`{ checks }`, same signature, e.g. a VIES query) — or pass your findings to `buildCard` with the extension's (`buildCard(tool, input, [...warnings, ...yours])`) — and keep them with the pending action.
 
 ### Who may approve
 
@@ -183,17 +185,21 @@ const client = createLexwareClient({ apiKey });
 // An order confirmation names its quotation as `quotation_id`: withSource turns
 // it into the source fields that prepare and execute read — pass the same value to both.
 const input = withSource(orderConfirmationInputSchema.parse(args));
-const warnings = await prepareSalesDocument(client, "order-confirmation", input);
-const card = buildCard("create_order_confirmation", input, warnings);
+// draftOnly: never a finalized document, whatever `draft` says — give it to all three.
+const warnings = await prepareSalesDocument(client, "order-confirmation", input, { draftOnly: true, checks: viesCheck });
+const card = buildCard("create_order_confirmation", input, warnings, { draftOnly: true });
 if (!card) throw new Error("not one of the extension's writing tools");
 // keep input and warnings with the pending action; after a person approves:
 const shown = shownDuplicates(warnings);
-await executeApprovedSalesDocument({ client, journal: journalIn(store) }, "order-confirmation", input, {
+await executeApprovedSalesDocument({ client, journal: journalIn(store), draftOnly: true }, "order-confirmation", input, {
   id: actionId,
   shownOnCard: (url) => shown.includes(url),
   notes: () => card.findings.map((finding) => `${finding.title}: ${finding.value}`),
+  warnings, // the articles as the card read them — not read again
 });
 ```
+
+`prepareSalesDocument`'s fourth argument is a signal, as before, or `{ signal, draftOnly, checks }`. `warnings` on the approval is optional: without it the write reads the referenced articles itself. The journal must outlive one process (`memoryStore` does not): it is what keeps a second run for the same customer order from creating a second document.
 
 Quotations and invoices work the same without `withSource` (`quotationInputSchema`, `invoiceInputSchema`; an invoice's `source_document_id` is already the generic field). The result of an approved sales document carries the customer's Lexware contact id as `contactId` next to `contactName`, to link the document to your own records — in the eve tools' result too. `buildCard` returns `null` for a tool name that is not one of the extension's writing tools. For customers, `prepareCustomer` returns `shownContactIds`; pass them to `executeApprovedCustomer` as they are (an array) or as a `Set`. For a change, `prepareCustomerUpdate` returns the warnings (the contact, then each changed field), a `binding` with the contact id and its version, or a `refusal` when there is nothing to approve; pass the binding to `executeApprovedCustomerUpdate`, which stops when the contact's version moved on. The tool descriptions are exported too (`customerDescription`, `customerUpdateDescription`). `store` is any `JsonStore` from `@kevludwig/lexware-office`.
 

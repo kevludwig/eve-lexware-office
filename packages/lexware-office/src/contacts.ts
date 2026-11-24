@@ -24,13 +24,21 @@ export interface Contact {
   allowTaxFreeInvoices?: boolean;
   /** ISO code of the first billing address. */
   countryCode?: string;
+  /**
+   * Every billing address, in the contact's order — a sales document prints
+   * the first unless its address is overridden. Always set when read through
+   * this package; optional only so that hand-built contacts stay valid.
+   */
+  billingAddresses?: ContactAddress[];
+  /** Every shipping address, in the contact's order. Always set when read through this package. */
+  shippingAddresses?: ContactAddress[];
 }
 
 interface RawContact {
   id: string;
   roles?: { customer?: { number?: number }; vendor?: { number?: number } };
   company?: { name?: string; vatRegistrationId?: string; allowTaxFreeInvoices?: boolean };
-  addresses?: { billing?: { countryCode?: string }[] };
+  addresses?: { billing?: Partial<ContactAddress>[]; shipping?: Partial<ContactAddress>[] };
   person?: { firstName?: string; lastName?: string };
   emailAddresses?: Partial<Record<EmailType, string[]>>;
 }
@@ -54,6 +62,19 @@ function toContact(raw: RawContact): Contact {
     ...(raw.company?.vatRegistrationId?.trim() ? { vatRegistrationId: raw.company.vatRegistrationId.trim() } : {}),
     ...(raw.company?.allowTaxFreeInvoices !== undefined ? { allowTaxFreeInvoices: raw.company.allowTaxFreeInvoices } : {}),
     ...(raw.addresses?.billing?.[0]?.countryCode ? { countryCode: raw.addresses.billing[0].countryCode } : {}),
+    billingAddresses: (raw.addresses?.billing ?? []).map(toAddress),
+    shippingAddresses: (raw.addresses?.shipping ?? []).map(toAddress),
+  };
+}
+
+/** An address as read — the API requires a country on every one; a missing one reads as "". */
+function toAddress(raw: Partial<ContactAddress>): ContactAddress {
+  return {
+    ...(raw.supplement ? { supplement: raw.supplement } : {}),
+    ...(raw.street ? { street: raw.street } : {}),
+    ...(raw.zip ? { zip: raw.zip } : {}),
+    ...(raw.city ? { city: raw.city } : {}),
+    countryCode: raw.countryCode ?? "",
   };
 }
 
@@ -89,6 +110,36 @@ export async function findContactsByName(
   if (name.trim().length < MIN_NAME_SEARCH_LENGTH) return [];
   const page = await client.request<ContactPage>(
     `/contacts${query({ name, customer: options.customer, vendor: options.vendor, size: options.size ?? 10 })}`,
+    { signal: options.signal },
+  );
+  return (page.content ?? []).map(toContact);
+}
+
+/** Lexware searches email addresses from three characters on, as it does names. */
+export const MIN_EMAIL_SEARCH_LENGTH = 3;
+
+/**
+ * The search pattern for an exact email address: Lexware reads `_` as one
+ * and `%` as any number of characters — escaped, they match only themselves.
+ */
+export const escapeContactSearch = (value: string): string => value.replace(/[\\_%]/g, (char) => `\\${char}`);
+
+/**
+ * Contacts with this email address — in their own addresses or at a contact
+ * person — up to `size` (default 10). Always a list of candidates: one
+ * address can belong to several contacts (a head office and its branches), and
+ * the API matches parts of an address too. Shorter than
+ * MIN_EMAIL_SEARCH_LENGTH finds nothing (no request).
+ */
+export async function findContactsByEmail(
+  client: LexwareClient,
+  email: string,
+  options: { customer?: boolean; vendor?: boolean; size?: number; signal?: AbortSignal } = {},
+): Promise<Contact[]> {
+  const needle = email.trim();
+  if (needle.length < MIN_EMAIL_SEARCH_LENGTH) return [];
+  const page = await client.request<ContactPage>(
+    `/contacts${query({ email: escapeContactSearch(needle), customer: options.customer, vendor: options.vendor, size: options.size ?? 10 })}`,
     { signal: options.signal },
   );
   return (page.content ?? []).map(toContact);

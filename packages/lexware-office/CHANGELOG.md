@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.6.0
+
+### Achtung beim Update
+
+- **Sales document links change.** Created, read, listed and duplicate sales documents now link as Lexware Office does — `#!/VoucherView/Order|Invoice|Quotation/<id>` instead of `#!/VoucherDetail/<id>`. A consumer that stored such URLs to compare them later — e.g. the duplicates an approval card showed — no longer matches them by string: accept both forms or compare document ids (`@kevludwig/eve-lexware-office` 0.10 does that for its own approvals). `voucherUrl(id)` without a kind is unchanged and still opens any voucher.
+
+### Added
+
+- `findContactsByEmail(client, email, { customer, vendor, size })`: contacts with this email address in their own addresses or at a contact person — always a list of candidates. `_` and `%` are escaped (`escapeContactSearch`), so the address matches only itself; under `MIN_EMAIL_SEARCH_LENGTH` (3) characters no request is sent.
+- `Contact.billingAddresses` and `Contact.shippingAddresses`: every address of the contact, in its order.
+- `findArticles(client, { articleNumber, gtin, type }, { size })`: articles by number, GTIN/EAN or type (AND), mapped like `getArticle`; `Article.gtin`; `MAX_ARTICLE_PAGE_SIZE`.
+- `NewSalesDocument.address` (`SalesAddressOverride`): name, supplement, street, zip, city and country for this one document instead of the contact's billing address; empty fields are not sent, a country that is not ISO 3166-1 alpha-2 is refused before sending.
+- `customerOrderLine(orderNumber, language)` — „Ihre Bestellung Nr. …" / „Your order no. …" — and `customerOrderNumbersIn(text)` to read it back.
+- `findDuplicateSalesDocument` takes `customerOrderNumber`: a candidate whose introduction names the same number is a match (`by: "order-number"`), whatever its total; a total match reports `by: "total"`. With an order number every checked candidate is read before a total match is reported — still at most `maxCandidates`.
+- `getSalesDocument` returns `title` and `introduction`.
+- `vatIdProblem`, `vatIdCountry`, `normalizeVatId`, `VAT_ID_PATTERNS`: the form of an EU VAT ID per member state, offline (no VIES).
+- `isRateLimitError`, `isRateLimitBody`.
+- `paymentTermLabel(days, discount, language)`: `"en"` phrases the term in English („Payable within 14 days without deduction"). Lexware does not translate a term on an English document. One day reads „1 day" / „1 Tag", also in a cash discount.
+- `voucherUrl(id, kind)`: with a sales document's kind, the link Lexware Office itself uses — `#!/VoucherView/Order/<id>`, `…/Invoice/<id>`, `…/Quotation/<id>`; `VoucherLinkKind`, `MIN_ARTICLE_PAGE_SIZE`.
+
+### Changed
+
+- Sales documents (created, read, listed, duplicates) link with `VoucherView/…` instead of `VoucherDetail/<id>` — see „Achtung beim Update".
+- `salesDocumentProblems` refuses an `address` override without `name` or `countryCode` — Lexware answers it with 406 "Name and countryCode are required address fields." (checked live).
+- `findArticles` asks for at least 25 articles: the API refuses a smaller page with 406.
+- A GET answered 500 with "rate limit exceeded" is retried like a 429 (the API documents both). Writes answered so are not sent again — the docs do not promise that they did not run. `describeError` adds a rate-limit hint to both — for a write answered 500, that it may have run and should be checked in Lexware Office before a retry.
+- `salesDocumentProblems` refuses an introduction or remark over 2000 characters.
+
 ## 0.5.0
 
 ### Added

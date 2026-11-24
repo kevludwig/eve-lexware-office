@@ -454,7 +454,7 @@ describe("document fields", () => {
     assert.deepEqual(body.shippingConditions, { shippingType: "delivery", shippingDate: "2026-11-02T00:00:00.000+01:00" });
     assert.equal(body.deliveryTerms, "Lieferung frei Haus");
     assert.deepEqual(body.paymentConditions, {
-      paymentTermLabel: "10 Tage 2 % Skonto, 30 Tage netto",
+      paymentTermLabel: "10 days 2 % discount, 30 days net",
       paymentTermDuration: 30,
       paymentDiscountConditions: { discountPercentage: 2, discountRange: 10 },
     });

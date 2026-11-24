@@ -237,3 +237,32 @@ describe("runPurchasePreflight", () => {
     assert.ok(result.warnings.some((warning) => warning.kind === "voucher-attachment-missing"));
   });
 });
+
+describe("the approved capture", () => {
+  const input = {
+    supplier_name: "Musterlieferant GmbH",
+    voucher_number: "R-2026-0042",
+    voucher_date: "2026-05-13",
+    total_gross_amount: 119,
+    tax_groups: [{ gross_amount: 119, tax_rate_percent: 19 }],
+  };
+
+  it("stops before writing when the duplicate search fails (403, 429, 500 rate limit)", async () => {
+    const { default: createPurchaseInvoice } = await import("../dist/extension/tools/create_purchase_invoice.mjs");
+    for (const [status, body] of [
+      [403, "forbidden"],
+      [429, ""],
+      [500, '{"message":"Rate limit exceeded"}'],
+    ] as const) {
+      // Retry-After 0: the client's retries run without waiting.
+      const failing = (call: { method: string; path: string }) =>
+        call.method === "GET" && call.path === "/voucherlist" ? new Response(body, { status, headers: { "retry-after": "0" } }) : undefined;
+      const api = useApi(vendor("Musterlieferant GmbH"), failing);
+      await assert.rejects(
+        () => createPurchaseInvoice.execute(input, { callId: `p-${status}`, abortSignal: undefined }),
+        /^Error: Eingangsrechnung nicht erfasst: Die Dublettenprüfung ist fehlgeschlagen — .*Nichts angelegt/,
+      );
+      assert.equal(api.calls.filter((call) => call.method === "POST").length, 0);
+    }
+  });
+});

@@ -13,11 +13,16 @@ export type Warning =
   // A finished line — for tools whose findings need no logic later. "⚠ " in the title marks a warning.
   | { kind: "note"; title: string; value: string }
   // Sales documents
-  | { kind: "sales-duplicate"; documentLabel: string; url: string; voucherNumber?: string; voucherDate?: string; voucherStatus?: string }
+  // `orderNumber`: found by the customer's order number (certain), not by the line-item total (heuristic)
+  | { kind: "sales-duplicate"; documentLabel: string; url: string; voucherNumber?: string; voucherDate?: string; voucherStatus?: string; orderNumber?: string }
   | { kind: "sales-duplicate-check-failed"; reason: string }
   | { kind: "duplicate-check-incomplete"; reason: string }
   | { kind: "sales-contact"; reason: string }
   | { kind: "customer-resolved"; name: string; number?: number }
+  // An article a line references, as read before the card — the write takes its type from here instead of reading it again
+  | { kind: "article-resolved"; id: string; title: string; articleNumber?: string; lineType: "service" | "material"; netPrice?: number; grossPrice?: number }
+  // A line's unit price that differs from its article's (net, or gross on a gross document)
+  | { kind: "article-price-deviation"; line: string; articleTitle: string; linePrice: number; articlePrice: number; gross: boolean }
   // Customers: one changed field of a contact, values as text ("" for empty)
   | { kind: "contact-change"; label: string; before: string; after: string }
   | { kind: "source-resolved"; sourceLabel: string; contactName?: string }
@@ -62,7 +67,9 @@ export function describeWarning(warning: Warning): Finding {
       return {
         title: "⚠ Dublette",
         value:
-          `${warning.documentLabel} mit gleicher Positionssumme existiert bereits` +
+          (warning.orderNumber
+            ? `${warning.documentLabel} zur Bestellung Nr. ${warning.orderNumber} existiert bereits`
+            : `${warning.documentLabel} mit gleicher Positionssumme existiert bereits`) +
           (warning.voucherNumber ? ` (${warning.voucherNumber}` : " (") +
           (warning.voucherDate ? `, ${shortDate(warning.voucherDate)}` : "") +
           (warning.voucherStatus ? `, ${warning.voucherStatus}` : "") +
@@ -74,6 +81,18 @@ export function describeWarning(warning: Warning): Finding {
       return { title: "⚠ Dublettenprüfung", value: `unvollständig — ${warning.reason}` };
     case "sales-contact":
       return { title: "⚠ Kunde", value: warning.reason };
+    case "article-resolved":
+      return {
+        title: "Artikel",
+        value: `${warning.title}${warning.articleNumber ? ` (${warning.articleNumber})` : ""} — ${warning.lineType === "material" ? "Produkt" : "Dienstleistung"}`,
+      };
+    case "article-price-deviation":
+      return {
+        title: "⚠ Artikelpreis",
+        value:
+          `„${warning.line}“: ${eur(warning.linePrice)}${warning.gross ? " brutto" : ""} statt ${eur(warning.articlePrice)} laut Artikel „${warning.articleTitle}“ — ` +
+          "Lexware übernimmt den Positionspreis",
+      };
     case "customer-resolved":
       return { title: "Kunde", value: warning.number !== undefined ? `${warning.name} (Nr. ${warning.number})` : warning.name };
     case "contact-change":

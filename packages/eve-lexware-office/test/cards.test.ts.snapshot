@@ -30,7 +30,7 @@ exports[`sales card: dates, payment, tax, discounts > shows a quotation's discou
     },
     {
       "title": "Zahlungsziel",
-      "value": "10 Tage 2 % Skonto, 30 Tage netto"
+      "value": "10 days 2 % discount, 30 days net"
     },
     {
       "title": "Steuerart",

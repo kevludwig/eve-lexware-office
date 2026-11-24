@@ -18,6 +18,7 @@ import {
   isCalendarDate,
   lineItemSchema,
   MAX_LINE_ITEMS,
+  orderIntakeFields,
   QUOTATION_VALIDITY_DAYS,
   type SalesInput,
   salesRefinement,
@@ -80,6 +81,7 @@ export const orderConfirmationInputSchema = z
     ...shippingFields,
     ...documentFields,
     ...deliveryTermsField,
+    ...orderIntakeFields,
     ...documentTextFields,
     ...draftField("die AB"),
   })
@@ -97,7 +99,9 @@ export const orderConfirmationDescription =
     "Erstellt eine Auftragsbestätigung (AB) in Lexware Office und schreibt sie direkt fest (sie erhält eine AB-Nummer); mit " +
     "draft: true entsteht ein Entwurf. Positionen mit Beschreibung und Textpositionen wie beim Angebot, aber ohne optionale. " +
     "Geht die AB aus einem Angebot hervor, dessen quotation_id mitgeben — das Angebot vorher über /voucherlist " +
-    "(voucherType 'quotation') suchen und lesen; bei mehreren passenden den Nutzer wählen lassen. Legt erst nach Freigabe an.";
+    "(voucherType 'quotation') suchen und lesen; bei mehreren passenden den Nutzer wählen lassen. Aus einer Bestellung des Kunden " +
+    "(Mail, PDF): seine Bestellnummer als customer_order_number, eine abweichende Lieferadresse als delivery_address — beide " +
+    "stehen dann als feste Zeilen in der Einleitung, die Dublettenprüfung findet eine AB zur selben Bestellnummer. Legt erst nach Freigabe an.";
 
 export const invoiceInputSchema = z
   .object({
@@ -114,6 +118,7 @@ export const invoiceInputSchema = z
     ...shippingFields,
     ...documentFields,
     ...buyerReferenceField,
+    ...orderIntakeFields,
     ...documentTextFields,
   })
   .strict()
@@ -130,6 +135,7 @@ export const invoiceDescription =
     "Kunde per Kundennummer oder contact_id, dazu die Positionen (mit Beschreibung, Textpositionen als Zwischenüberschrift); " +
     "source_document_id, wenn die Rechnung aus einem Angebot oder einer AB hervorgeht. Leistungsdatum bzw. -zeitraum " +
     "(service_date / service_period) und Zahlungsziel (payment_term_days) gehören in die Felder, nicht nur in den Text. " +
+    "Bestellnummer des Kunden als customer_order_number, abweichende Lieferadresse als delivery_address (feste Zeilen der Einleitung). " +
     "Legt erst nach Freigabe an und prüft vorher auf Dubletten.";
 
 export type QuotationInput = z.output<typeof quotationInputSchema>;

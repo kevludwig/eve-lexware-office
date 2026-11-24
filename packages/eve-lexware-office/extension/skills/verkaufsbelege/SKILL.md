@@ -180,6 +180,8 @@ Text tut beides nicht.
 | „auf Englisch", englischsprachiger Kunde | `language: "en"` (dazu ggf. `print_layout`) |
 | „mit der Vorlage X" | `print_layout: "X"` (Name aus `/print-layouts`) |
 | „Lieferung frei Haus" (nur AB) | `delivery_terms` — ohne Angabe druckt Lexware Office die Standard-Lieferbedingung des Kontos |
+| Bestellnummer aus der Bestellung des Kunden (Mail, PDF) (AB, Rechnung) | `customer_order_number` — wörtlich; steht als erste Zeile der Einleitung, nicht zusätzlich in `introduction` schreiben |
+| „Lieferung an unsere Filiale …" (AB, Rechnung) | `delivery_address: { name, street, zip, city, country_code }` — Zeile „Lieferadresse: …“ in der Einleitung; die Rechnungsadresse bleibt die des Kontakts |
 
 Leistungsdatum gibt es nur bei AB und Rechnung — ein Angebot hat keins. Ein
 „Monat" heißt erster bis letzter Tag dieses Monats. Liegen Termine in der

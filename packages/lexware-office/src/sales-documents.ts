@@ -126,12 +126,20 @@ export type SalesLanguage = "de" | "en";
 /**
  * The text Lexware Office prints for a payment term, in its own wording:
  * „Zahlbar sofort, rein netto", „Zahlbar innerhalb von 14 Tagen ohne Abzug",
- * „10 Tage 2 % Skonto, 30 Tage netto".
+ * „10 Tage 2 % Skonto, 30 Tage netto" — in English for `en` („Payable
+ * immediately, net", „Payable within 14 days without deduction",
+ * „10 days 2 % discount, 30 days net"): Lexware does not translate it.
  */
-export function paymentTermLabel(days: number, discount?: { percentage: number; days: number }): string {
+export function paymentTermLabel(days: number, discount?: { percentage: number; days: number }, language: SalesLanguage = "de"): string {
+  const en = language === "en";
+  const dayWord = (count: number) => (en ? (count === 1 ? "day" : "days") : count === 1 ? "Tag" : "Tage");
   if (discount) {
-    return `${discount.days} Tage ${discount.percentage.toLocaleString("de-DE", { maximumFractionDigits: 2 })} % Skonto, ${days} Tage netto`;
+    const percent = discount.percentage.toLocaleString(en ? "en-GB" : "de-DE", { maximumFractionDigits: 2 });
+    return en
+      ? `${discount.days} ${dayWord(discount.days)} ${percent} % discount, ${days} ${dayWord(days)} net`
+      : `${discount.days} ${dayWord(discount.days)} ${percent} % Skonto, ${days} ${dayWord(days)} netto`;
   }
+  if (en) return days === 0 ? "Payable immediately, net" : `Payable within ${days} ${days === 1 ? "day" : "days"} without deduction`;
   return days === 0 ? "Zahlbar sofort, rein netto" : `Zahlbar innerhalb von ${days} ${days === 1 ? "Tag" : "Tagen"} ohne Abzug`;
 }
 
@@ -164,10 +172,59 @@ export interface CreatedSalesDocument {
   url: string;
 }
 
+/**
+ * The recipient's address on this one document, instead of the contact's
+ * first billing address. Lexware Office does not store it back to the
+ * contact. Fields left out are not sent; once any is set, `name` and
+ * `countryCode` are required (the API answers 406 otherwise).
+ *
+ * Lexware Office lists and titles the document under this `name`, not the
+ * contact's: to keep it findable under the company, keep the contact's name
+ * and put the site into `supplement` (e.g. „Filiale Nord").
+ */
+export interface SalesAddressOverride {
+  name?: string;
+  /** Additional address information, e.g. a department or c/o. */
+  supplement?: string;
+  street?: string;
+  zip?: string;
+  city?: string;
+  /** ISO 3166-1 alpha-2, e.g. AT. */
+  countryCode?: string;
+}
+
+/** The fields of an address override that are actually sent — trimmed, empty ones dropped. */
+function addressOverrideOf(address: SalesAddressOverride | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of ["name", "supplement", "street", "zip", "city", "countryCode"] as const) {
+    const value = address?.[key]?.trim();
+    if (value) result[key] = key === "countryCode" ? value.toUpperCase() : value;
+  }
+  return result;
+}
+
+/**
+ * The fixed first line of a document's introduction that names the
+ * customer's order number — written and found by this package in the same
+ * words, so a second document for the same order can be recognised.
+ */
+export function customerOrderLine(orderNumber: string, language: SalesLanguage = "de"): string {
+  return `${language === "en" ? "Your order no." : "Ihre Bestellung Nr."} ${orderNumber.trim()}`;
+}
+
+const ORDER_LINE = /^(?:Ihre Bestellung Nr\.|Your order no\.)[ \t]+(.+?)[ \t]*$/gm;
+
+/** The customer order numbers a text names in customerOrderLine's words, in either language. */
+export function customerOrderNumbersIn(text: string | undefined): string[] {
+  return [...(text ?? "").matchAll(ORDER_LINE)].map((match) => match[1]!);
+}
+
 /** What a sales document is created with. Everything optional falls back to Lexware Office's defaults. */
 export interface NewSalesDocument {
   kind: SalesDocumentKind;
   contactId: string;
+  /** A different recipient address for this document; the contact's first billing address when absent. */
+  address?: SalesAddressOverride;
   items: readonly LineItem[];
   /** yyyy-MM-dd or a timestamp. Default: now. */
   voucherDate?: string;
@@ -229,7 +286,7 @@ export async function createSalesDocument(client: LexwareClient, options: NewSal
   };
   const payload: Record<string, unknown> = {
     voucherDate,
-    address: { contactId: options.contactId },
+    address: { contactId: options.contactId, ...addressOverrideOf(options.address) },
     lineItems: options.items.map((item) => toApiLine(item, gross)),
     totalPrice,
     taxConditions,
@@ -250,7 +307,7 @@ export async function createSalesDocument(client: LexwareClient, options: NewSal
     json: payload,
     signal,
   });
-  return { id: result.id, resourceUri: result.resourceUri, url: client.voucherUrl(result.id) };
+  return { id: result.id, resourceUri: result.resourceUri, url: client.voucherUrl(result.id, options.kind) };
 }
 
 /** The checks createSalesDocument runs before sending — exported so a caller can run them before an approval. */
@@ -271,6 +328,14 @@ export function salesDocumentProblems(options: NewSalesDocument): string[] {
   if ((options.deliveryTerms?.length ?? 0) > SALES_TEXT_LIMITS.deliveryTerms) problems.push(`Delivery terms longer than ${SALES_TEXT_LIMITS.deliveryTerms} characters`);
   if ((options.totalDiscountAbsolute ?? 0) > 0 && (options.totalDiscountPercentage ?? 0) > 0) problems.push("Either an absolute or a percentage total discount, not both");
   if ((options.totalDiscountPercentage ?? 0) > 100) problems.push("A total discount above 100 %");
+  const override = addressOverrideOf(options.address);
+  if (Object.keys(override).length > 0 && (!override.name || !override.countryCode)) {
+    // Lexware's own words for it (406): "Name and countryCode are required address fields."
+    problems.push("An address override needs name and countryCode (Lexware: \"Name and countryCode are required address fields.\")");
+  }
+  if (override.countryCode && !/^[A-Z]{2}$/.test(override.countryCode)) problems.push(`Address country ${override.countryCode} is no ISO 3166-1 alpha-2 code`);
+  if ((options.introduction?.length ?? 0) > SALES_TEXT_LIMITS.introduction) problems.push(`Introduction longer than ${SALES_TEXT_LIMITS.introduction} characters`);
+  if ((options.remark?.length ?? 0) > SALES_TEXT_LIMITS.remark) problems.push(`Remark longer than ${SALES_TEXT_LIMITS.remark} characters`);
 
   if (isVatFreeTaxType(taxType) && lines.some((item) => item.taxRate !== 0)) problems.push(`Tax type ${taxType} needs 0 % on every line`);
   if (options.taxConditions?.taxSubType && isVatFreeTaxType(taxType)) problems.push("A tax subtype goes with net or gross only");
@@ -366,6 +431,10 @@ export interface SalesDocumentDetail {
   hasOptionalOrAlternative: boolean;
   /** The final net total — after a total discount. */
   totalNet?: number;
+  /** The printed title, where one replaces the heading. */
+  title?: string;
+  /** The opening text — where customerOrderLine names the customer's order. */
+  introduction?: string;
   /** A total discount is invisible in the lines. */
   discountAbsolute?: number;
   discountPercentage?: number;
@@ -390,6 +459,8 @@ export async function getSalesDocument(client: LexwareClient, kind: SalesDocumen
       subItems?: unknown[];
     }>;
     totalPrice?: { totalNetAmount?: number; totalDiscountAbsolute?: number; totalDiscountPercentage?: number };
+    title?: string;
+    introduction?: string;
   }>(`${ENDPOINTS[kind]}/${encodeURIComponent(id)}`, { signal });
 
   const lines = raw.lineItems ?? [];
@@ -410,7 +481,7 @@ export async function getSalesDocument(client: LexwareClient, kind: SalesDocumen
   const items = priced.filter((item) => !item.optional);
   return {
     id: raw.id,
-    url: client.voucherUrl(raw.id),
+    url: client.voucherUrl(raw.id, kind),
     voucherNumber: raw.voucherNumber,
     voucherStatus: raw.voucherStatus,
     contactId: raw.address?.contactId,
@@ -422,6 +493,8 @@ export async function getSalesDocument(client: LexwareClient, kind: SalesDocumen
     totalNet: raw.totalPrice?.totalNetAmount,
     discountAbsolute: raw.totalPrice?.totalDiscountAbsolute,
     discountPercentage: raw.totalPrice?.totalDiscountPercentage,
+    ...(raw.title ? { title: raw.title } : {}),
+    ...(raw.introduction ? { introduction: raw.introduction } : {}),
   };
 }
 
@@ -463,24 +536,37 @@ export async function findRecentSalesDocuments(
     })}`,
     { signal: options.signal },
   );
-  return (list.content ?? []).map((entry) => ({ ...entry, url: client.voucherUrl(entry.id) }));
+  return (list.content ?? []).map((entry) => ({ ...entry, url: client.voucherUrl(entry.id, options.kind) }));
 }
 
 /** A search that could not check everything must not read as "nothing found". */
 export type DuplicateSearchResult<T> =
-  | { status: "match"; match: T; scanned: number }
+  /** `by`: what matched — the customer's order number (certain) or the line-item total (heuristic). */
+  | { status: "match"; match: T; scanned: number; by?: "order-number" | "total" }
   | { status: "clear"; scanned: number }
   | { status: "incomplete"; scanned: number; reason: string };
 
 /**
- * A same-kind document for this contact with the same line-item net total —
- * heuristic (sales documents carry no external reference), so a finding for
- * the approval, never an automatic refusal. Each candidate is fetched in
- * detail, capped at `maxCandidates`.
+ * A same-kind document for this contact that names the same customer order
+ * number (customerOrderLine in its introduction) — or, heuristically, has the
+ * same line-item net total. A finding for the approval, never an automatic
+ * refusal. Each candidate is fetched in detail, capped at `maxCandidates`.
+ * With an order number every checked candidate is read before a total match
+ * is reported, because an order-number match is the certain one; without one
+ * the first total match ends the search.
  */
 export async function findDuplicateSalesDocument(
   client: LexwareClient,
-  options: { kind: SalesDocumentKind; contactId: string; itemsTotalNet: number; lookbackDays?: number; maxCandidates?: number; signal?: AbortSignal },
+  options: {
+    kind: SalesDocumentKind;
+    contactId: string;
+    itemsTotalNet: number;
+    /** The customer's order number as customerOrderLine writes it. */
+    customerOrderNumber?: string;
+    lookbackDays?: number;
+    maxCandidates?: number;
+    signal?: AbortSignal;
+  },
 ): Promise<DuplicateSearchResult<SalesListEntry>> {
   const candidates = await findRecentSalesDocuments(client, {
     kind: options.kind,
@@ -490,12 +576,19 @@ export async function findDuplicateSalesDocument(
     signal: options.signal,
   });
   const checked = candidates.slice(0, options.maxCandidates ?? 10);
+  const orderNumber = options.customerOrderNumber?.trim();
+  let byTotal: { match: SalesListEntry; scanned: number } | null = null;
   for (const [index, candidate] of checked.entries()) {
     const detail = await getSalesDocument(client, options.kind, candidate.id, options.signal);
-    if (Math.abs(detail.lineItemsNet - round2(options.itemsTotalNet)) <= DUPLICATE_TOTAL_TOLERANCE) {
-      return { status: "match", match: candidate, scanned: index + 1 };
+    if (orderNumber && customerOrderNumbersIn(detail.introduction).includes(orderNumber)) {
+      return { status: "match", match: candidate, scanned: index + 1, by: "order-number" };
+    }
+    if (!byTotal && Math.abs(detail.lineItemsNet - round2(options.itemsTotalNet)) <= DUPLICATE_TOTAL_TOLERANCE) {
+      byTotal = { match: candidate, scanned: index + 1 };
+      if (!orderNumber) break;
     }
   }
+  if (byTotal) return { status: "match", ...byTotal, by: "total" };
   if (candidates.length > checked.length) {
     return { status: "incomplete", scanned: checked.length, reason: `${candidates.length} Belege im Zeitfenster, nur die ${checked.length} neuesten geprüft` };
   }

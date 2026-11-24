@@ -13,7 +13,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { describeWarning, isCorrectable, notesOf, rememberRejection, saveWarnings, wasRejected, wasShownOnCard } from "../lib/findings";
-import { eur } from "../lib/format";
+import { eur, sentence } from "../lib/format";
 import { readJournal, writeJournal } from "../lib/journal";
 import {
   MISSING_EUR_AMOUNT_INSTRUCTION,
@@ -263,8 +263,11 @@ export default defineTool({
       let existing: Awaited<ReturnType<typeof findPurchaseInvoiceByNumber>> = null;
       try {
         existing = await findPurchaseInvoiceByNumber(client(), input.voucher_number, ctx.abortSignal);
-      } catch {
-        // A failed search must not block the approved capture.
+      } catch (error) {
+        // A search that fails cannot say that no duplicate appeared — then nothing is captured.
+        throw new Error(
+          `Eingangsrechnung nicht erfasst: Die Dublettenprüfung ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; die Freigabe später erneut ausführen.`,
+        );
       }
       if (existing && !wasShownOnCard(ctx.callId, existing.url)) {
         throw new Error(

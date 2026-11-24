@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.10.0
+
+### Achtung beim Update
+
+- **Document links change** (with `@kevludwig/lexware-office` 0.6.0): links to sales documents — in results, on the card, and in `shownDuplicates(warnings)` — are now `#!/VoucherView/Order|Invoice|Quotation/<id>` instead of `#!/VoucherDetail/<id>`. `executeApprovedSalesDocument` asks `shownOnCard` with both forms, so an approval pending across the update still goes ahead at a duplicate its card showed. Code of your own that compares stored links — e.g. a pending action's `shownDuplicates` against a fresh search, or links saved in your records — must accept both forms or compare document ids.
+- **A failed duplicate search now stops an approved write** (see Fixed). Consumers that sort failures into "unclear whether created" by the marker „nicht angelegt:" should treat „Die Dublettenprüfung ist fehlgeschlagen" and „Die Suche nach ähnlichen Kontakten ist fehlgeschlagen" as "nothing sent".
+
+### Fixed
+
+- A duplicate search that fails right before an approved write stops the write instead of being skipped: a 403, the rate limit (429, or 500 "rate limit exceeded" after the retries), any error. Nothing is sent and no journal entry is written; the error names the reason. The same for the second search for similar contacts before `create_customer` and the duplicate search before `create_purchase_invoice`.
+
+### Added
+
+- `customer_order_number` and `delivery_address` on `create_order_confirmation` and `create_invoice`. Both go into the introduction as fixed lines — „Ihre Bestellung Nr. …" first (en: „Your order no. …"), then „Lieferadresse: …" (en: „Delivery address: …"), then the own introduction; the 2000 characters count all of it. The card shows both, and says when they replace the account's default introduction.
+- The duplicate check finds a document of the same customer naming the same order number, whatever its total („⚠ Dublette: … zur Bestellung Nr. … existiert bereits"). The approved write is journaled under customer and order number as well: a run after a timeout, or another approval of the same order whose card did not show the first document, returns that document (described as it is) instead of creating a second. A card that showed it was approved knowingly — then a second one is created. A draft deleted in Lexware Office is created again; a write Lexware refused (4xx) frees the order. With an order number, a duplicate check that could not read every candidate stops the write unless the card said so („⚠ Dublettenprüfung: unvollständig").
+- „⚠ Artikelpreis" when a position's price differs from its article's (net, or gross on a gross document).
+- For a vat-free tax type the country check takes the delivery address's country when one is given; the customer's VAT ID is checked for its member state's form and, for intra-community supplies and EU services, for not being German.
+- `./operations`: `Operations.draftOnly` — quotations and order confirmations are created as drafts whatever `draft` says; `prepareSalesDocument(client, kind, input, { signal, draftOnly, checks })` (a signal as fourth argument still works) with the caller's own checks in the mount's `checks` signature; `buildCard(tool, input, warnings, { draftOnly })`; `Approved.warnings` — the articles as the card read them, not read again; `PrepareOptions`, `HOST_CHECK_FAILED`, `introductionOf`, `deliveryAddressLine`, `orderJournalId`; `JournalEntry.status` `"failed"`.
+- The result of a sales document carries `customerOrderNumber` when one was given.
+- „⚠ Lieferadresse" when the customer has a delivery address other than a billing one and the call names no `delivery_address`: Lexware Office does not print a contact's delivery address on an order confirmation or invoice (checked in print).
+- „⚠ Zahlungsziel auf Deutsch" on an English document without `payment_term_days`: Lexware prints the account's default term in German (checked in print). With `payment_term_days`, the term is phrased in English.
+
+### Changed
+
+- Links to created documents are Lexware Office's own (`#!/VoucherView/Order|Invoice|Quotation/<id>`); duplicates on the card link the same way — see „Achtung beim Update".
+- „⚠ Artikelpreis" now says that Lexware keeps the line's price — checked live for a net document with a service article.
+- The articles a document references are read once, before the card; the eve tools hand them to the write. The card's „Artikel" line is now the finding `article-resolved` (same text).
+
 ## 0.9.0
 
 ### Added

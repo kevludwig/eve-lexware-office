@@ -8,7 +8,7 @@ import { countsToTotal, daysSince, isPricedLine, isVatFreeTaxType, lineNet, netT
 
 import { eur, shortDate } from "./format";
 import { purchaseCard } from "./purchase-card";
-import { TAX_TYPE_LABEL, berlinToday, paymentOf, shippingOf, toLineItems, validUntilOf, type SalesInput } from "./sales";
+import { TAX_TYPE_LABEL, berlinToday, deliveryAddressLine, introductionOf, paymentOf, shippingOf, toLineItems, validUntilOf, type SalesInput } from "./sales";
 import type { ApprovalCard } from "./card-types";
 import { describeWarning, type Warning } from "./warnings";
 
@@ -155,6 +155,14 @@ function salesFacts(kind: "quotation" | "order-confirmation" | "invoice", input:
   const totals = salesTotals(input);
   const source = input.quotation_id ?? input.source_document_id;
   const ownText = (value?: string) => (value ? `eigener Text (${value.trim().length} Zeichen)` : "Standard aus Lexware Office");
+  const orderNumber = input.customer_order_number?.trim();
+  const sentIntroduction = introductionOf(input);
+  const introduction =
+    sentIntroduction === input.introduction
+      ? ownText(input.introduction)
+      : input.introduction
+        ? `Bestellnummer/Lieferadresse + eigener Text (${sentIntroduction!.length} Zeichen)`
+        : "nur Bestellnummer/Lieferadresse — ersetzt den Standardtext aus Lexware Office";
   const head = [
     ...(typeof input.customer_number === "number"
       ? [{ title: "Kundennummer", value: String(input.customer_number) }]
@@ -188,7 +196,9 @@ function salesFacts(kind: "quotation" | "order-confirmation" | "invoice", input:
     ...(input.print_layout ? [{ title: "Druckvorlage", value: input.print_layout }] : []),
     ...(input.delivery_terms ? [{ title: "Lieferbedingungen", value: cut(input.delivery_terms, DESCRIPTION_PREVIEW) }] : []),
     ...(input.buyer_reference !== undefined ? [{ title: "Leitweg-ID", value: input.buyer_reference || "keine (normale Rechnung statt XRechnung)" }] : []),
-    { title: "Einleitung", value: ownText(input.introduction) },
+    ...(orderNumber ? [{ title: "Bestellnummer", value: orderNumber }] : []),
+    ...(input.delivery_address ? [{ title: "Lieferadresse", value: deliveryAddressLine(input.delivery_address).replace(/^Lieferadresse: /, "") }] : []),
+    { title: "Einleitung", value: introduction },
     { title: "Schlussnotiz", value: ownText(input.remark) },
   ];
   return [...head, ...lineFacts(items, budget - factLength(head))];
@@ -317,11 +327,17 @@ export function ownTool(name: string): string | null {
   return local in BUILDERS ? local : null;
 }
 
-/** The card for a tool's input and the findings of its checks — no eve, e.g. for an approval page. */
-export function buildCard(toolName: string, input: unknown, warnings: readonly Warning[]): ApprovalCard | null {
+/**
+ * The card for a tool's input and the findings of its checks — no eve, e.g.
+ * for an approval page. `draftOnly`: the caller's Operations create drafts
+ * only — a quotation or order confirmation then reads „Entwurf" whatever its
+ * input says.
+ */
+export function buildCard(toolName: string, input: unknown, warnings: readonly Warning[], options: { draftOnly?: boolean } = {}): ApprovalCard | null {
   const tool = ownTool(toolName);
   if (!tool) return null;
-  const values = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const given = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const values = options.draftOnly && (tool === "create_quotation" || tool === "create_order_confirmation") ? { ...given, draft: true } : given;
   const findings = warnings.map(describeWarning);
   return { tool, ...BUILDERS[tool]!(values, factLength(findings)), findings };
 }

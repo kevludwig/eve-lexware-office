@@ -10,7 +10,8 @@
 import { keySegment, type JsonStore, type PaymentReminderEffect } from "@kevludwig/lexware-office";
 
 export interface JournalEntry {
-  status: "pending" | "created" | "attached";
+  /** `failed`: the API refused the write (4xx) — nothing was created. */
+  status: "pending" | "created" | "attached" | "failed";
   resourceId?: string;
   /** What a sent payment reminder did, kept so a replay returns the same proof. */
   effect?: PaymentReminderEffect;

@@ -26,6 +26,7 @@ import {
 } from "@kevludwig/lexware-office";
 import { z } from "zod";
 
+import { sentence } from "./format";
 import type { Warning } from "./warnings";
 import type { Journal } from "./journal-store";
 
@@ -314,20 +315,20 @@ export async function executeApprovedCustomer(
   }
 
   // Hours can pass between card and click. A similar contact the card did
-  // not show stops the creation; those it showed were approved knowingly.
+  // not show stops the creation; those it showed were approved knowingly. A
+  // search that fails cannot rule one out — then nothing is created either.
+  let similar;
   try {
-    const unseen = (await findContactsByName(ops.client, customerNameOf(input), { size: 5, signal: approved.signal })).filter(
-      (contact) => !shown.has(contact.id),
-    );
-    if (unseen.length > 0) {
-      throw new Error(
-        `Abgebrochen: Inzwischen gibt es einen ähnlichen Kontakt, den die Karte nicht zeigte: ${unseen.map(label).join(", ")}. ` +
-          "Nichts angelegt. Rufe das Tool erneut auf, wenn trotzdem ein neuer Kunde entstehen soll.",
-      );
-    }
+    similar = await findContactsByName(ops.client, customerNameOf(input), { size: 5, signal: approved.signal });
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Abgebrochen")) throw error;
-    // A failed second search must not block the approved creation.
+    throw new Error(`Kunde nicht angelegt: Die Suche nach ähnlichen Kontakten ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; die Freigabe später erneut ausführen.`);
+  }
+  const unseen = similar.filter((contact) => !shown.has(contact.id));
+  if (unseen.length > 0) {
+    throw new Error(
+      `Abgebrochen: Inzwischen gibt es einen ähnlichen Kontakt, den die Karte nicht zeigte: ${unseen.map(label).join(", ")}. ` +
+        "Nichts angelegt. Rufe das Tool erneut auf, wenn trotzdem ein neuer Kunde entstehen soll.",
+    );
   }
 
   await ops.journal.write("customer", approved.id, { status: "pending" });

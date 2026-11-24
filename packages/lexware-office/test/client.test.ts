@@ -52,6 +52,28 @@ describe("createLexwareClient", () => {
     await assert.rejects(once.request("/x"), (error: unknown) => error instanceof LexwareApiError && error.status === 429);
   });
 
+  it("retries a read answered 500 „rate limit exceeded“ like a 429, never a write", async () => {
+    const limited = () => new Response('{"message":"Rate limit exceeded"}', { status: 500 });
+    const read = fakeFetch([limited, () => json({ ok: true })]);
+    const client = createLexwareClient({ apiKey: "k", fetch: read.impl, minSpacingMs: 0, rateLimitBackoffMs: 1 });
+    assert.deepEqual(await client.request("/x"), { ok: true });
+    assert.equal(read.calls.length, 2);
+
+    const write = fakeFetch([limited, () => json({ id: "never" })]);
+    const writer = createLexwareClient({ apiKey: "k", fetch: write.impl, minSpacingMs: 0, rateLimitBackoffMs: 1 });
+    await assert.rejects(writer.request("/invoices", { method: "POST", json: {} }), (error: unknown) => {
+      assert.ok(error instanceof LexwareApiError && error.status === 500);
+      assert.match(describeError(error), /womöglich trotzdem ausgeführt: erst in Lexware Office prüfen/);
+      return true;
+    });
+    assert.equal(write.calls.length, 1);
+
+    const other = fakeFetch([() => new Response("boom", { status: 500 })]);
+    const plain = createLexwareClient({ apiKey: "k", fetch: other.impl, minSpacingMs: 0, rateLimitBackoffMs: 1 });
+    await assert.rejects(plain.request("/x"), (error: unknown) => error instanceof LexwareApiError && error.responseBody === "boom");
+    assert.equal(other.calls.length, 1);
+  });
+
   it("waits as long as Retry-After says", async () => {
     const { impl, calls } = fakeFetch([() => new Response("", { status: 429, headers: { "retry-after": "0.2" } }), () => json({ ok: true })]);
     const client = createLexwareClient({ apiKey: "k", fetch: impl, minSpacingMs: 0, rateLimitBackoffMs: 1 });

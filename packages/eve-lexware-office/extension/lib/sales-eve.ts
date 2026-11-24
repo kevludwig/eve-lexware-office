@@ -5,54 +5,22 @@
 
 import type { SalesDocumentKind } from "@kevludwig/lexware-office";
 
-import { describeWarning, notesOf, saveWarnings, wasShownOnCard, type Warning } from "./findings";
+import { notesOf, saveWarnings, warningsOf, wasShownOnCard, type Warning } from "./findings";
+import { runSalesChecks } from "./host-checks";
 import { runtimeJournal } from "./journal";
 import { client, config } from "./runtime";
 import { executeApprovedSalesDocument, prepareSalesDocument, type SalesInput } from "./sales";
-import type { SalesCheckCall, SalesTool } from "./sales-tools";
 import { settledOf } from "./state";
 
-const TOOL_OF: Record<SalesDocumentKind, SalesTool> = {
-  quotation: "create_quotation",
-  "order-confirmation": "create_order_confirmation",
-  invoice: "create_invoice",
-};
-
-/** The finding when the host's own checks failed — the card must not look checked when they did not run. */
-export const HOST_CHECK_FAILED: Warning = {
-  kind: "note",
-  title: "⚠ Zusatzprüfung",
-  value: "fehlgeschlagen — ihre Befunde fehlen, selbst prüfen",
-};
-
-const renders = (warning: unknown): boolean => {
-  try {
-    const finding = describeWarning(warning as Warning);
-    return typeof finding?.title === "string" && typeof finding.value === "string";
-  } catch {
-    return false;
-  }
-};
+export { HOST_CHECK_FAILED } from "./host-checks";
 
 /**
  * The mount's `checks` for a sales document. A check that throws, or returns
  * something that is not a list of findings, breaks nothing: it is logged and
  * the card says that the check failed.
  */
-export async function runHostChecks(kind: SalesDocumentKind, input: SalesInput, ctx: { callId: string; abortSignal?: AbortSignal }): Promise<Warning[]> {
-  const checks = config().checks;
-  if (!checks) return [];
-  try {
-    const found: unknown = await checks({ tool: TOOL_OF[kind], input, signal: ctx.abortSignal } as SalesCheckCall);
-    if (!Array.isArray(found)) throw new TypeError("checks returned no list");
-    const valid = found.filter(renders) as Warning[];
-    if (valid.length === found.length) return valid;
-    console.warn(`[lexware] checks returned ${found.length - valid.length} unreadable findings for ${ctx.callId}`);
-    return [...valid, HOST_CHECK_FAILED];
-  } catch (error) {
-    console.warn(`[lexware] checks failed for ${ctx.callId}: ${String(error)}`);
-    return [HOST_CHECK_FAILED];
-  }
+export function runHostChecks(kind: SalesDocumentKind, input: SalesInput, ctx: { callId: string; abortSignal?: AbortSignal }): Promise<Warning[]> {
+  return runSalesChecks(config().checks, kind, input, { label: ctx.callId, signal: ctx.abortSignal });
 }
 
 /** The checks with the mount's client — for the eve tools. */
@@ -92,6 +60,7 @@ export function executeSalesDocument(
     id: ctx.callId,
     shownOnCard: (url) => wasShownOnCard(ctx.callId, url),
     notes: () => notesOf(ctx.callId),
+    warnings: warningsOf(ctx.callId),
     signal: ctx.abortSignal,
   });
 }

@@ -8,6 +8,10 @@
  * the session — the input, the warnings, and what the card showed — until
  * a person approves, then executes with it.
  *
+ * `draftOnly` (Operations, PrepareOptions, buildCard) keeps every quotation and
+ * order confirmation a draft; `checks` (PrepareOptions) adds the caller's own
+ * findings, e.g. a VIES query.
+ *
  * Nothing here reads the mount's configuration or eve's session, and nothing
  * it imports loads eve: it runs where eve is not installed (test/operations-isolated.test.ts).
  */
@@ -30,14 +34,19 @@ export {
   type PreparedCustomerUpdate,
 } from "./customer";
 export { describeWarning, type Warning } from "./warnings";
+export { HOST_CHECK_FAILED } from "./host-checks";
 export { journalIn, type Journal, type JournalEntry } from "./journal-store";
 export { readAccount, readDescription, readInputSchema, type ReadInput } from "./read";
 export {
   DOCUMENT_LABEL,
+  deliveryAddressLine,
   executeApprovedSalesDocument,
+  introductionOf,
+  orderJournalId,
   prepareSalesDocument,
   type Approved,
   type Operations,
+  type PrepareOptions,
   type SalesInput,
 } from "./sales";
 export {

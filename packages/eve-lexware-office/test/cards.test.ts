@@ -312,7 +312,7 @@ describe("sales card: dates, payment, tax, discounts", () => {
     assert.equal(factOf(card, "Rabatt"), "5 % auf die Summe (−13,50 EUR netto, vor Rabatt 270,00 EUR)");
     assert.equal(factOf(card, "1. Hosting S"), "12 Monat × 29,75 EUR brutto − 10 %");
     assert.equal(factOf(card, "Alternative zu 1. Hosting M"), "12 Monat × 59,50 EUR brutto · nicht in der Summe");
-    assert.equal(factOf(card, "Zahlungsziel"), "10 Tage 2 % Skonto, 30 Tage netto");
+    assert.equal(factOf(card, "Zahlungsziel"), "10 days 2 % discount, 30 days net", "englischer Beleg: englischer Text — Lexware übersetzt ihn nicht");
     assert.equal(factOf(card, "Gültig bis"), "12.11.2026 (Standard)");
     assert.equal(factOf(card, "Leistungsdatum"), undefined);
     t.assert.snapshot(card);

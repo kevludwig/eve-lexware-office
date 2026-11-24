@@ -7,12 +7,16 @@
  * is no document with a total to check against. They all go to the card.
  */
 
+import { createHash } from "node:crypto";
+
 import {
   ITEMS_TOTAL_TOLERANCE,
+  LexwareApiError,
   SALES_TAX_TYPES,
   SALES_TEXT_LIMITS,
   countsToTotal,
   createSalesDocument,
+  customerOrderLine,
   describeError,
   findContactByNumber,
   findDuplicateSalesDocument,
@@ -30,6 +34,9 @@ import {
   paymentTermLabel,
   round2,
   salesDocumentProblems,
+  vatIdCountry,
+  vatIdProblem,
+  type Article,
   type Contact,
   type LineItem,
   type NewSalesDocument,
@@ -41,7 +48,10 @@ import {
 } from "@kevludwig/lexware-office";
 import { z } from "zod";
 
+import { sentence } from "./format";
+import { runSalesChecks } from "./host-checks";
 import type { Journal } from "./journal-store";
+import type { SalesChecks } from "./sales-tools";
 import { describeWarning, type Warning } from "./warnings";
 
 export const DOCUMENT_LABEL: Record<SalesDocumentKind, string> = {
@@ -404,6 +414,52 @@ export const deliveryTermsField = {
     .describe('Lieferbedingungen, höchstens 255 Zeichen, z.B. „Lieferung frei Haus". Ohne Angabe die Vorgabe aus Lexware Office'),
 };
 
+const addressPart = (what: string, max: number) => z.string().trim().min(1).max(max).describe(what);
+
+/**
+ * What an order from a mail or PDF brings beyond the positions: the
+ * customer's order number and a delivery address other than the billing one.
+ * Lexware Office has a field for neither — both go into the introduction as
+ * fixed lines (introductionOf), the order number in words the duplicate
+ * check finds again.
+ */
+export const orderIntakeFields = {
+  customer_order_number: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .regex(/^[^\r\n]+$/, { message: "eine Zeile ohne Zeilenumbruch" })
+    .optional()
+    .describe(
+      "Bestellnummer des Kunden, wörtlich aus seiner Bestellung (Mail/PDF). Steht als erste Zeile der Einleitung " +
+        "(„Ihre Bestellung Nr. …“, englisch „Your order no. …“) — ohne eigene Einleitung ersetzt sie den Standardtext. " +
+        "Die Dublettenprüfung findet damit einen Beleg zur selben Bestellung. Nicht zusätzlich in introduction schreiben",
+    ),
+  delivery_address: z
+    .object({
+      name: addressPart("Empfänger, z.B. Firma und Filiale", 100).optional(),
+      supplement: addressPart("Zusatz, z.B. Abteilung, Rampe, c/o", 100).optional(),
+      street: addressPart("Straße und Hausnummer", 100),
+      zip: addressPart("PLZ", 20),
+      city: addressPart("Ort", 100),
+      country_code: z
+        .string()
+        .trim()
+        .regex(/^[A-Za-z]{2}$/, { message: "Ländercode nach ISO 3166-1 alpha-2, z.B. AT" })
+        .transform((value) => value.toUpperCase())
+        .optional()
+        .describe("Land als ISO-Code, z.B. AT. Ohne Angabe wird kein Land gedruckt und das Land der Rechnungsadresse geprüft"),
+    })
+    .strict()
+    .optional()
+    .describe(
+      "Lieferadresse, wenn die Ware nicht an die Rechnungsadresse geht (z.B. Filiale statt Zentrale). Lexware Office hat dafür " +
+        "kein Belegfeld und druckt auch die Lieferadresse des Kontakts nicht: sie steht als Zeile „Lieferadresse: …“ in der Einleitung. " +
+        "Bei steuerfreien Steuerarten prüft das Tool ihr Land",
+    ),
+};
+
 export const buyerReferenceField = {
   buyer_reference: z
     .string()
@@ -442,6 +498,37 @@ export interface SalesInput {
   no_service_date?: boolean;
   delivery_terms?: string;
   buyer_reference?: string;
+  customer_order_number?: string;
+  delivery_address?: { name?: string; supplement?: string; street?: string; zip?: string; city?: string; country_code?: string };
+}
+
+/** The delivery address as the introduction prints it: „Lieferadresse: Name, Zusatz, Straße, PLZ Ort, Land“ (en: „Delivery address: …“). */
+export function deliveryAddressLine(address: NonNullable<SalesInput["delivery_address"]>, language: "de" | "en" = "de"): string {
+  const country = address.country_code?.trim().toUpperCase();
+  const parts = [
+    address.name,
+    address.supplement,
+    address.street,
+    [address.zip, address.city].map((part) => part?.trim()).filter(Boolean).join(" "),
+    country && country !== "DE" ? country : undefined,
+  ]
+    .map((part) => part?.trim())
+    .filter(Boolean);
+  return `${language === "en" ? "Delivery address:" : "Lieferadresse:"} ${parts.join(", ")}`;
+}
+
+/**
+ * The introduction as it is sent: the order-number line first, then the
+ * delivery address, then the own text after a blank line. Without either
+ * fixed line the own text (or none, then Lexware's default) as given.
+ */
+export function introductionOf(input: SalesInput): string | undefined {
+  const fixed = [
+    input.customer_order_number?.trim() ? customerOrderLine(input.customer_order_number, input.language) : undefined,
+    input.delivery_address ? deliveryAddressLine(input.delivery_address, input.language) : undefined,
+  ].filter((line): line is string => Boolean(line));
+  if (fixed.length === 0) return input.introduction;
+  return input.introduction ? `${fixed.join("\n")}\n\n${input.introduction}` : fixed.join("\n");
 }
 
 /** Today in Berlin, yyyy-MM-dd. */
@@ -466,7 +553,7 @@ export function paymentOf(input: SalesInput): NewSalesDocument["paymentCondition
   if (input.payment_term_days === undefined) return undefined;
   const discount = input.cash_discount ? { percentage: input.cash_discount.percent, days: input.cash_discount.days } : undefined;
   return {
-    paymentTermLabel: input.payment_term_label ?? paymentTermLabel(input.payment_term_days, discount),
+    paymentTermLabel: input.payment_term_label ?? paymentTermLabel(input.payment_term_days, discount, input.language),
     paymentTermDuration: input.payment_term_days,
     ...(input.cash_discount ? { paymentDiscountConditions: { discountPercentage: input.cash_discount.percent, discountRange: input.cash_discount.days } } : {}),
   };
@@ -517,7 +604,7 @@ export function toSalesDocument(
     ...(resolved.printLayoutId ? { printLayoutId: resolved.printLayoutId } : {}),
     ...(input.delivery_terms ? { deliveryTerms: input.delivery_terms } : {}),
     ...(input.buyer_reference !== undefined ? { xRechnung: { buyerReference: input.buyer_reference } } : {}),
-    ...(input.introduction ? { introduction: input.introduction } : {}),
+    ...(introductionOf(input) ? { introduction: introductionOf(input) } : {}),
     ...(input.remark ? { remark: input.remark } : {}),
   };
 }
@@ -550,8 +637,16 @@ export function salesRefinement(kind: SalesDocumentKind) {
     if (kind === "quotation" && input.valid_until && input.valid_until < (input.voucher_date ?? berlinToday())) {
       issue("valid_until liegt vor dem Belegdatum.", ["valid_until"]);
     }
+    if ((introductionOf(input)?.length ?? 0) > SALES_TEXT_LIMITS.introduction) {
+      issue(
+        `Einleitung mit Bestellnummer und Lieferadresse ergibt ${introductionOf(input)!.length} Zeichen, höchstens ${SALES_TEXT_LIMITS.introduction} — introduction kürzen.`,
+        ["introduction"],
+      );
+    }
     // The client's own checks catch the rest (tax rates without subtype, …) — in its words.
-    for (const problem of salesDocumentProblems(toSalesDocument(kind, input, { contactId: "00000000-0000-4000-8000-000000000000" }))) issue(problem);
+    for (const problem of salesDocumentProblems(toSalesDocument(kind, input, { contactId: "00000000-0000-4000-8000-000000000000" }))) {
+      if (!problem.startsWith("Introduction longer")) issue(problem);
+    }
   };
 }
 
@@ -585,12 +680,36 @@ export async function resolveCustomer(api: LexwareClient, input: SalesInput, sig
   return { contact: null, warnings: [{ kind: "sales-contact", reason: "weder Kundennummer noch contact_id angegeben" }] };
 }
 
+/** How a caller outside eve runs the checks before the card. */
+export interface PrepareOptions {
+  signal?: AbortSignal;
+  /**
+   * The caller creates drafts only (Operations.draftOnly): the card then says
+   * „Entwurf" whatever `draft` the input names — pass the same to buildCard.
+   */
+  draftOnly?: boolean;
+  /**
+   * The caller's own checks — the signature of the mount's `checks`, e.g. a
+   * VIES query of the customer's VAT ID. Their findings come after the
+   * package's; one that throws or returns no list adds „⚠ Zusatzprüfung".
+   */
+  checks?: SalesChecks;
+}
+
 /**
  * Customer, duplicates, the source document and the document settings —
  * what the card shows before a person approves. Network errors become
  * findings, not exceptions. Needs no eve: any caller with a client can run it.
+ * The fourth argument is a signal (as before) or PrepareOptions.
  */
-export async function prepareSalesDocument(api: LexwareClient, kind: SalesDocumentKind, input: SalesInput, signal?: AbortSignal): Promise<Warning[]> {
+export async function prepareSalesDocument(
+  api: LexwareClient,
+  kind: SalesDocumentKind,
+  input: SalesInput,
+  signalOrOptions?: AbortSignal | PrepareOptions,
+): Promise<Warning[]> {
+  const options: PrepareOptions = isAbortSignal(signalOrOptions) ? { signal: signalOrOptions } : (signalOrOptions ?? {});
+  const signal = options.signal;
   const warnings: Warning[] = [];
   const itemsNet = totalOf(toLineItems(input.items));
   const { contact, warnings: contactWarnings } = await resolveCustomer(api, input, signal);
@@ -600,7 +719,8 @@ export async function prepareSalesDocument(api: LexwareClient, kind: SalesDocume
     // The real name on the card: a valid but wrong contact_id passes every role check.
     warnings.push({ kind: "customer-resolved", name: contact.name, number: contact.number });
     try {
-      const result = await findDuplicateSalesDocument(api, { kind, contactId: contact.id, itemsTotalNet: itemsNet, signal });
+      const orderNumber = orderNumberOf(input);
+      const result = await findDuplicateSalesDocument(api, { kind, contactId: contact.id, itemsTotalNet: itemsNet, customerOrderNumber: orderNumber, signal });
       if (result.status === "match") {
         warnings.push({
           kind: "sales-duplicate",
@@ -609,6 +729,7 @@ export async function prepareSalesDocument(api: LexwareClient, kind: SalesDocume
           voucherNumber: result.match.voucherNumber,
           voucherDate: result.match.voucherDate,
           voucherStatus: result.match.voucherStatus,
+          ...(result.by === "order-number" && orderNumber ? { orderNumber } : {}),
         });
       } else if (result.status === "incomplete") {
         warnings.push({ kind: "duplicate-check-incomplete", reason: result.reason });
@@ -621,8 +742,19 @@ export async function prepareSalesDocument(api: LexwareClient, kind: SalesDocume
   warnings.push(...(await checkSource(api, kind, input, contact, itemsNet, signal)));
   warnings.push(...(await checkDocumentSettings(api, kind, input, contact, signal)));
   if (kind === "order-confirmation") warnings.push(...checkQuotationWording(input));
+  if (options.draftOnly && kind !== "invoice" && input.draft !== true) {
+    warnings.push({ kind: "note", title: "Entwurf", value: "nur Entwürfe erlaubt — der Beleg wird nicht festgeschrieben, auch ohne draft" });
+  }
+  warnings.push(...(await runSalesChecks(options.checks, kind, input, { label: `${kind} ${orderNumberOf(input) ?? ""}`.trim(), signal })));
   return warnings;
 }
+
+/** A signal from any realm or polyfill — PrepareOptions has neither of these. */
+const isAbortSignal = (value: unknown): value is AbortSignal =>
+  typeof value === "object" && value !== null && "aborted" in value && typeof (value as { addEventListener?: unknown }).addEventListener === "function";
+
+/** The customer's order number, trimmed — undefined when none is named. */
+export const orderNumberOf = (input: SalesInput): string | undefined => input.customer_order_number?.trim() || undefined;
 
 /**
  * Texts copied from a quotation keep what only fits the quotation: „dieses
@@ -692,6 +824,27 @@ async function checkDocumentSettings(api: LexwareClient, kind: SalesDocumentKind
     }
   }
 
+  if (input.payment_term_days === undefined && input.language === "en") {
+    // Seen in print (2026-11-24): the account's default term stays German on an English document.
+    note(
+      "⚠ Zahlungsziel auf Deutsch",
+      "Lexware Office druckt die Standard-Zahlungsbedingung auch auf einem englischen Beleg deutsch — payment_term_days angeben, dann entsteht der Text englisch (z.B. „Payable within 14 days without deduction“)",
+    );
+  }
+  // Only delivery addresses other than a billing one: those are the ones a print would miss.
+  const sameAddress = (a: { street?: string; zip?: string; city?: string; countryCode?: string }, b: typeof a) =>
+    [a.street, a.zip, a.city, a.countryCode].map((part) => part?.trim().toLowerCase() ?? "").join("|") ===
+    [b.street, b.zip, b.city, b.countryCode].map((part) => part?.trim().toLowerCase() ?? "").join("|");
+  const otherShipping = (contact?.shippingAddresses ?? []).filter((address) => !(contact?.billingAddresses ?? []).some((billing) => sameAddress(address, billing)));
+  if (kind !== "quotation" && contact && !input.delivery_address && otherShipping.length > 0) {
+    const lines = otherShipping.map((address) => deliveryAddressLine(addressOfContact(address)).replace(/^Lieferadresse: /, ""));
+    note(
+      "⚠ Lieferadresse",
+      `der Kontakt hat ${lines.length === 1 ? "eine Lieferadresse" : `${lines.length} Lieferadressen`} (${lines.join(" / ")}) — Lexware Office druckt sie nicht ` +
+        "auf AB oder Rechnung. Geht die Ware dorthin, als delivery_address angeben",
+    );
+  }
+
   if (input.payment_term_days === undefined) {
     try {
       const fallback = await defaultPaymentCondition(api, signal);
@@ -716,17 +869,57 @@ async function checkDocumentSettings(api: LexwareClient, kind: SalesDocumentKind
     }
   }
 
+  const articles = new Map<string, Article>();
   for (const id of articleIdsOf(input.items)) {
     try {
       const article = await getArticle(api, id, signal);
-      note("Artikel", `${article.title}${article.articleNumber ? ` (${article.articleNumber})` : ""} — ${article.lineType === "material" ? "Produkt" : "Dienstleistung"}`);
+      articles.set(id, article);
+      warnings.push({
+        kind: "article-resolved",
+        id,
+        title: article.title,
+        lineType: article.lineType,
+        ...(article.articleNumber ? { articleNumber: article.articleNumber } : {}),
+        ...(article.netPrice !== undefined ? { netPrice: article.netPrice } : {}),
+        ...(article.grossPrice !== undefined ? { grossPrice: article.grossPrice } : {}),
+      });
     } catch (error) {
       note("⚠ Artikel", `${id} nicht lesbar — Anlegen bricht ab (${describeError(error)})`);
     }
   }
+  warnings.push(...articlePriceDeviations(input, articles));
 
   warnings.push(...(await checkTaxType(api, input, contact, signal)));
   return warnings;
+}
+
+/** A contact's address as delivery_address spells it. */
+const addressOfContact = (address: { supplement?: string; street?: string; zip?: string; city?: string; countryCode?: string }) => ({
+  supplement: address.supplement,
+  street: address.street,
+  zip: address.zip,
+  city: address.city,
+  country_code: address.countryCode,
+});
+
+/** Prices differing by less than this are the same price (article prices carry four decimals). */
+const PRICE_TOLERANCE = 0.005;
+
+/**
+ * Lines whose unit price differs from their article's — the net price, on a
+ * gross document the gross one. Lexware Office is sent the line's price; the
+ * card says that it is not the article's.
+ */
+export function articlePriceDeviations(input: SalesInput, articles: ReadonlyMap<string, Pick<Article, "title" | "netPrice" | "grossPrice">>): Warning[] {
+  const gross = input.tax_type === "gross";
+  const lines = (input.items ?? []).filter((item) => item.type !== "text").flatMap((item) => [item, ...(item.alternatives ?? [])]);
+  return lines.flatMap((item): Warning[] => {
+    const article = item.article_id ? articles.get(item.article_id) : undefined;
+    const linePrice = gross ? item.gross_price : item.net_price;
+    const articlePrice = gross ? article?.grossPrice : article?.netPrice;
+    if (!article || linePrice === undefined || articlePrice === undefined || Math.abs(linePrice - articlePrice) < PRICE_TOLERANCE) return [];
+    return [{ kind: "article-price-deviation", line: item.name ?? "", articleTitle: article.title, linePrice, articlePrice, gross }];
+  });
 }
 
 /**
@@ -754,16 +947,27 @@ async function checkTaxType(api: LexwareClient, input: SalesInput, contact: Cont
 
   const needsVatId = type === "intraCommunitySupply" || type === "constructionService13b" || type === "externalService13b";
   if (needsVatId && (!contact.isCompany || !contact.vatRegistrationId)) warn("braucht einen Firmenkontakt mit USt-IdNr. — beim Kunden fehlt sie");
+  else if (needsVatId && contact.vatRegistrationId) {
+    const problem = vatIdProblem(contact.vatRegistrationId);
+    if (problem) warn(`USt-IdNr. ${problem} — nur die Form geprüft, nicht bei VIES`);
+    else if ((type === "intraCommunitySupply" || type === "externalService13b") && vatIdCountry(contact.vatRegistrationId) === "DE") {
+      warn(`die USt-IdNr. des Kunden (${contact.vatRegistrationId}) ist deutsch — nötig ist die aus einem anderen EU-Staat`);
+    }
+  }
   if ((type === "thirdPartyCountryService" || type === "thirdPartyCountryDelivery") && contact.allowTaxFreeInvoices !== true) {
     warn("beim Kunden ist „Steuerfreie Rechnung erlauben“ nicht aktiviert");
   }
 
   const expected = type === "constructionService13b" ? null : type === "intraCommunitySupply" || type === "externalService13b" ? "intraCommunity" : "thirdPartyCountry";
-  if (expected && contact.countryCode) {
+  // Where the goods go decides, not where the invoice goes: a named delivery country first.
+  const deliveryCountry = input.delivery_address?.country_code?.trim().toUpperCase();
+  const countryCode = deliveryCountry || contact.countryCode;
+  const where = deliveryCountry ? "Lieferadresse" : "Rechnungsadresse";
+  if (expected && countryCode) {
     try {
-      const country = (await listCountries(api, signal)).find((entry) => entry.countryCode === contact.countryCode);
+      const country = (await listCountries(api, signal)).find((entry) => entry.countryCode === countryCode);
       if (country && country.taxClassification !== expected) {
-        warn(`Rechnungsadresse in ${country.countryNameDE ?? contact.countryCode} — passt nicht (${expected === "intraCommunity" ? "EU-Ausland erwartet" : "Nicht-EU-Land erwartet"})`);
+        warn(`${where} in ${country.countryNameDE ?? countryCode} — passt nicht (${expected === "intraCommunity" ? "EU-Ausland erwartet" : "Nicht-EU-Land erwartet"})`);
       }
     } catch (error) {
       warn(`Land nicht prüfbar (${describeError(error)})`);
@@ -815,6 +1019,12 @@ function chainImpossible(target: SalesDocumentKind, source: SalesDocumentKind, d
 export interface Operations {
   client: LexwareClient;
   journal: Journal;
+  /**
+   * Never a finalized document: quotations and order confirmations are
+   * created as drafts whatever `draft` the input names (invoices always are).
+   * Give prepareSalesDocument and buildCard the same, so the card says so.
+   */
+  draftOnly?: boolean;
 }
 
 export interface Approved {
@@ -824,13 +1034,30 @@ export interface Approved {
   shownOnCard: (url: string) => boolean;
   /** The card's findings as lines for the result, so the answer does not contradict the card. */
   notes: () => string[];
+  /**
+   * The findings prepareSalesDocument returned for this card. With them the
+   * write takes the articles as read before the card instead of reading
+   * them again; without, it reads them.
+   */
+  warnings?: readonly Warning[];
   signal?: AbortSignal;
 }
 
 /**
+ * The journal id of a customer order: contact and order number. The number
+ * goes in hashed — keySegment would fold „4711/A" and „4711_A" together.
+ */
+export function orderJournalId(contactId: string, orderNumber: string): string {
+  return `order-${contactId}-${createHash("sha256").update(orderNumber.trim()).digest("hex").slice(0, 32)}`;
+}
+
+/**
  * Creates the approved document — the same steps as the eve tool, for any
- * caller: a replay finds the journal entry, a duplicate that appeared after
- * the card stops the write, print layout and articles are looked up again.
+ * caller: a replay finds the journal entry (by approval, and by contact and
+ * customer order number when one is named), a duplicate that appeared after
+ * the card stops the write, a duplicate search that fails stops it too, and
+ * the print layout is looked up again. Articles come from the card's
+ * findings when the caller passes them.
  */
 export async function executeApprovedSalesDocument(
   ops: Operations,
@@ -844,47 +1071,94 @@ export async function executeApprovedSalesDocument(
   const items = toLineItems(input.items);
   const computed = totalOf(items);
   const optional = optionalItemsOf(items);
-  const finalize = kind !== "invoice" && input.draft !== true;
+  const finalize = !ops.draftOnly && kind !== "invoice" && input.draft !== true;
   const counts = {
     positions: items.filter(countsToTotal).length,
     netTotal: computed,
     ...(optional.length > 0 ? { optionalPositions: optional.length, optionalNetTotal: netTotal(optional.filter(isPricedLine)) } : {}),
   };
+  const resumed = async (id: string, why: string) => ({
+    ...(await describeCreated(api, kind, id, ctx.abortSignal)),
+    ...counts,
+    note: `Wiederaufnahme: ${label} ${why} — nichts doppelt erstellt.`,
+  });
+  // Another approval's document: described as it is, not with this input's positions.
+  const resumedOrder = async (id: string, why: string) => ({
+    ...(await describeExisting(api, kind, id, ctx.abortSignal)),
+    note: `Wiederaufnahme: ${label} ${why} — nichts doppelt erstellt.`,
+  });
+  // Cards from before 0.10 linked documents as VoucherDetail/<id>: either form counts as shown.
+  const shown = (id: string, url: string) => approved.shownOnCard(url) || approved.shownOnCard(api.voucherUrl(id));
 
   const journal = await ops.journal.read(kind, ctx.callId);
-  if (journal?.resourceId) {
-    return {
-      ...(await describeCreated(api, kind, journal.resourceId, ctx.abortSignal)),
-      ...counts,
-      note: `Wiederaufnahme: ${label} war aus einem abgebrochenen Lauf bereits angelegt — nichts doppelt erstellt.`,
-    };
-  }
+  if (journal?.resourceId) return resumed(journal.resourceId, "war aus einem abgebrochenen Lauf bereits angelegt");
 
   const { contact, warnings } = await resolveCustomer(api, input, ctx.abortSignal);
   if (!contact) throw new Error(`Kunde nicht auflösbar: ${warnings.map((warning) => describeWarning(warning).value).join("; ")}`);
 
-  // Hours can pass between card and click; a search error must not block the approved write.
-  try {
-    const duplicate = await findDuplicateSalesDocument(api, { kind, contactId: contact.id, itemsTotalNet: computed, signal: ctx.abortSignal });
-    if (duplicate.status === "match" && !approved.shownOnCard(duplicate.match.url)) {
-      throw new Error(
-        `Abgebrochen: Inzwischen gibt es bereits ${kind === "invoice" ? "eine" : "ein"} ${label} mit dieser Positionssumme: ${duplicate.match.url}. ` +
-          "Nichts angelegt. Rufe das Tool erneut auf, wenn trotzdem ein weiterer Beleg entstehen soll — dann steht der Fund auf der Karte.",
-      );
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Abgebrochen:")) throw error;
+  // A customer order is created once per approval that does not know of it: a
+  // run after a timeout, or a second approval of the same order, finds the
+  // first document under contact and order number. One the card showed as a
+  // duplicate was approved knowingly — then a second one is created.
+  const orderNumber = orderNumberOf(input);
+  const orderKey = orderNumber ? orderJournalId(contact.id, orderNumber) : undefined;
+  const orderEntry = orderKey ? await ops.journal.read(kind, orderKey) : null;
+  if (
+    orderEntry?.status === "created" &&
+    orderEntry.resourceId &&
+    !shown(orderEntry.resourceId, api.voucherUrl(orderEntry.resourceId, kind)) &&
+    (await stillExists(api, kind, orderEntry.resourceId, ctx.abortSignal))
+  ) {
+    return resumedOrder(orderEntry.resourceId, `zur Bestellung Nr. ${orderNumber} gibt es bereits`);
   }
 
-  // Print layout and articles are looked up again: hours can pass between card and click.
+  // Hours can pass between card and click. A search that fails cannot say
+  // that no duplicate appeared — then nothing is created.
+  let duplicate;
+  try {
+    duplicate = await findDuplicateSalesDocument(api, { kind, contactId: contact.id, itemsTotalNet: computed, customerOrderNumber: orderNumber, signal: ctx.abortSignal });
+  } catch (error) {
+    throw new Error(`${label} nicht angelegt: Die Dublettenprüfung ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; die Freigabe später erneut ausführen.`);
+  }
+  const knownDuplicate = duplicate.status === "match" && shown(duplicate.match.id, duplicate.match.url);
+  if (duplicate.status === "match" && duplicate.by === "order-number" && orderEntry?.status === "pending" && !knownDuplicate) {
+    // An earlier run's POST went through but its answer was lost (timeout): that is the document.
+    await ops.journal.write(kind, orderKey!, { status: "created", resourceId: duplicate.match.id });
+    await ops.journal.write(kind, ctx.callId, { status: "created", resourceId: duplicate.match.id });
+    return resumedOrder(duplicate.match.id, `zur Bestellung Nr. ${orderNumber} war aus einem abgebrochenen Lauf bereits angelegt`);
+  }
+  // With an order number the check is meant to be certain: one that could not
+  // read every candidate goes ahead only when the card said so.
+  if (duplicate.status === "incomplete" && orderNumber && !(approved.warnings ?? []).some((warning) => warning.kind === "duplicate-check-incomplete")) {
+    throw new Error(
+      `${label} nicht angelegt: Die Dublettenprüfung zur Bestellung Nr. ${orderNumber} ist unvollständig (${duplicate.reason}) und die Karte hat das nicht gezeigt. ` +
+        "Nichts angelegt; das Tool erneut aufrufen, dann steht es auf der Karte.",
+    );
+  }
+  if (duplicate.status === "match" && !knownDuplicate) {
+    const what = duplicate.by === "order-number" ? `zur Bestellung Nr. ${orderNumber}` : "mit dieser Positionssumme";
+    throw new Error(
+      `Abgebrochen: Inzwischen gibt es bereits ${kind === "invoice" ? "eine" : "ein"} ${label} ${what}: ${duplicate.match.url}. ` +
+        "Nichts angelegt. Rufe das Tool erneut auf, wenn trotzdem ein weiterer Beleg entstehen soll — dann steht der Fund auf der Karte.",
+    );
+  }
+
+  // The print layout is looked up again: hours can pass between card and click.
   let printLayoutId: string | undefined;
   if (input.print_layout) {
     const layout = await resolvePrintLayout(api, input.print_layout, ctx.abortSignal).catch(() => null);
     if (!layout) throw new Error(`${label} nicht angelegt: Druckvorlage „${input.print_layout}“ nicht eindeutig gefunden.`);
     printLayoutId = layout.id;
   }
+  // Articles as the card read them; only those it did not are read now.
+  const known = new Map((approved.warnings ?? []).flatMap((warning) => (warning.kind === "article-resolved" ? [[warning.id, warning.lineType] as const] : [])));
   const articleTypes = new Map<string, "service" | "material">();
   for (const id of articleIdsOf(input.items)) {
+    const type = known.get(id);
+    if (type) {
+      articleTypes.set(id, type);
+      continue;
+    }
     try {
       articleTypes.set(id, (await getArticle(api, id, ctx.abortSignal)).lineType);
     } catch (error) {
@@ -894,6 +1168,7 @@ export async function executeApprovedSalesDocument(
   const document = toSalesDocument(kind, input, { contactId: contact.id, printLayoutId, articleTypes });
 
   await ops.journal.write(kind, ctx.callId, { status: "pending" });
+  if (orderKey) await ops.journal.write(kind, orderKey, { status: "pending" });
 
   // A named source becomes a document chain; an invalid pursue (406) must not
   // block the approved document — then it is created without the link.
@@ -902,20 +1177,26 @@ export async function executeApprovedSalesDocument(
   let chained = linkable;
   const create = (precedingSalesVoucherId?: string) => createSalesDocument(api, { ...document, finalize, precedingSalesVoucherId }, ctx.abortSignal);
 
+  // A refusal (4xx) proves nothing was written: the order is free again for the next approval.
+  const failed = async (error: unknown): Promise<never> => {
+    if (orderKey && isRefusal(error)) await ops.journal.write(kind, orderKey, { status: "failed" });
+    throw new Error(`${label} nicht angelegt: ${describeError(error)}`);
+  };
   let created;
   try {
     created = await create(linkable ? sourceId : undefined);
   } catch (error) {
-    if (!(linkable && isPursueRejection(error))) throw new Error(`${label} nicht angelegt: ${describeError(error)}`);
+    if (!(linkable && isPursueRejection(error))) return failed(error);
     chained = false;
     try {
       created = await create(undefined);
     } catch (retryError) {
-      throw new Error(`${label} nicht angelegt: ${describeError(retryError)}`);
+      return failed(retryError);
     }
   }
 
   await ops.journal.write(kind, ctx.callId, { status: "created", resourceId: created.id });
+  if (orderKey) await ops.journal.write(kind, orderKey, { status: "created", resourceId: created.id });
   const detail = await describeCreated(api, kind, created.id, ctx.abortSignal);
 
   return {
@@ -926,6 +1207,7 @@ export async function executeApprovedSalesDocument(
     contactName: contact.name,
     status: finalize ? "festgeschrieben" : "Entwurf",
     ...counts,
+    ...(orderNumber ? { customerOrderNumber: orderNumber } : {}),
     ...(document.expirationDate ? { validUntil: document.expirationDate } : {}),
     ...settingsResult(document),
     ...(sourceId
@@ -942,6 +1224,39 @@ export async function executeApprovedSalesDocument(
       ? `${[label, detail.voucherNumber].filter(Boolean).join(" ")} ist festgeschrieben. Versand an den Kunden aus Lexware Office.`
       : `${label} ist ein Entwurf, nicht festgeschrieben — gegenlesen, festschreiben und versenden in Lexware Office.`,
   };
+}
+
+/** An answer that proves the API wrote nothing: a 4xx other than a timeout or the rate limit. */
+const isRefusal = (error: unknown): boolean => error instanceof LexwareApiError && error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
+
+/** An existing document as it is — for a resume that did not create it. */
+async function describeExisting(api: LexwareClient, kind: SalesDocumentKind, id: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  try {
+    const detail = await getSalesDocument(api, kind, id, signal);
+    return {
+      documentId: id,
+      url: detail.url,
+      kind,
+      voucherNumber: detail.voucherNumber,
+      documentName: [DOCUMENT_LABEL[kind], detail.voucherNumber].filter(Boolean).join(" "),
+      ...(detail.contactName ? { contactName: detail.contactName } : {}),
+      ...(detail.voucherStatus ? { status: detail.voucherStatus === "draft" ? "Entwurf" : "festgeschrieben" } : {}),
+      positions: detail.lineItems.length,
+      ...(Number.isFinite(detail.lineItemsNet) ? { netTotal: detail.lineItemsNet } : {}),
+    };
+  } catch {
+    return { documentId: id, url: api.voucherUrl(id, kind), kind };
+  }
+}
+
+/** Whether a journaled document is still there — a draft deleted in Lexware Office may be created again. Only a 404 counts as gone. */
+async function stillExists(api: LexwareClient, kind: SalesDocumentKind, id: string, signal?: AbortSignal): Promise<boolean> {
+  try {
+    await getSalesDocument(api, kind, id, signal);
+    return true;
+  } catch (error) {
+    return !(error instanceof LexwareApiError && error.status === 404);
+  }
 }
 
 /** What the result reports beyond positions and totals — the chat answer must match the card. */
@@ -983,6 +1298,6 @@ async function describeCreated(api: LexwareClient, kind: SalesDocumentKind, id: 
     return { documentId: id, url: detail.url, voucherNumber: detail.voucherNumber };
   } catch {
     // The document exists — a failed read-back only costs the number.
-    return { documentId: id, url: api.voucherUrl(id) };
+    return { documentId: id, url: api.voucherUrl(id, kind) };
   }
 }

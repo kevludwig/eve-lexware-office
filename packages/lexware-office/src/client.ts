@@ -6,7 +6,8 @@
  * a minimum spacing. Retries on 429 — honouring Retry-After — cover other
  * clients on the same account: serverless instances, a second app. Share one
  * client per process; separate clients do not know about each other's
- * requests, the retries only soften that.
+ * requests, the retries only soften that. A 500 with "rate limit exceeded"
+ * counts as a 429 for reads; a write answered so is not sent again.
  */
 
 export const DEFAULT_BASE_URL = "https://api.lexware.io/v1";
@@ -39,6 +40,11 @@ export interface LexwareClientOptions {
   fetch?: typeof fetch;
 }
 
+/** The sales documents whose own link Lexware Office knows. */
+export type VoucherLinkKind = "quotation" | "order-confirmation" | "invoice";
+
+const VIEW_OF: Record<VoucherLinkKind, string> = { quotation: "Quotation", "order-confirmation": "Order", invoice: "Invoice" };
+
 export interface FileUpload {
   bytes: Uint8Array;
   filename: string;
@@ -52,8 +58,12 @@ export interface LexwareClient {
   download(path: string, init: RequestInit & { accept: string }): Promise<{ bytes: Uint8Array; mediaType: string }>;
   /** A multipart file upload; the API calls the field `file`. */
   upload<T = unknown>(path: string, file: FileUpload, init?: RequestInit): Promise<T>;
-  /** The link to a voucher or invoice in the web app. */
-  voucherUrl(id: string): string;
+  /**
+   * The link to a voucher in the web app. With the kind of a sales document
+   * it is the link Lexware Office itself shows (`VoucherView/Order|Invoice|Quotation/<id>`);
+   * without, the generic `VoucherDetail/<id>`, which opens any voucher.
+   */
+  voucherUrl(id: string, kind?: VoucherLinkKind): string;
 }
 
 /**
@@ -87,10 +97,25 @@ export function describeError(error: unknown): string {
   const hint =
     error.status === 403
       ? " Ein 403 heißt: dem API-Schlüssel fehlt das Recht für diesen Endpunkt."
-      : error.status === 406
-        ? " Ein 406 heißt meist: ein Pflichtfeld fehlt oder ein Betrag passt nicht zur Summe."
-        : "";
+      : isRateLimitError(error)
+        ? error.status === 500 && error.method !== "GET"
+          ? // A write answered 500 may have run (the client does not resend it) — retrying blindly can create twice.
+            " Rate-Limit der API (500) — der Schreibzugriff ist womöglich trotzdem ausgeführt: erst in Lexware Office prüfen, dann erneut versuchen."
+          : " Rate-Limit der API (2 Anfragen pro Sekunde je Konto) — später erneut versuchen."
+        : error.status === 406
+          ? " Ein 406 heißt meist: ein Pflichtfeld fehlt oder ein Betrag passt nicht zur Summe."
+          : "";
   return `${error.message}${hint}`;
+}
+
+/** Whether an error body is Lexware's "rate limit exceeded" — it comes with a 500 as well as with a 429. */
+export function isRateLimitBody(body: string): boolean {
+  return /rate[ _-]?limit/i.test(body);
+}
+
+/** Whether an error is the API's rate limit: a 429, or a 500 saying "rate limit exceeded". */
+export function isRateLimitError(error: unknown): boolean {
+  return error instanceof LexwareApiError && (error.status === 429 || (error.status === 500 && isRateLimitBody(error.responseBody)));
 }
 
 /** A query string from an object; empty values drop out. */
@@ -166,8 +191,8 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
 
   /**
    * One request, queued, retried on 429 — then the API demonstrably did not
-   * run it. A transport error after a POST is never retried: the voucher may
-   * well exist already.
+   * run it — and, for a GET only, on a 500 "rate limit exceeded". A transport
+   * error after a POST is never retried: the voucher may well exist already.
    */
   async function send(path: string, init: RequestInit, limitMs = timeoutMs): Promise<Response> {
     const method = init.method ?? "GET";
@@ -181,16 +206,28 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
         });
       });
 
+    // A 500 the API marks as "rate limit exceeded" (documented next to 429) is
+    // one too — but only a GET is sent again: the docs do not promise that a
+    // write answered 500 did not run. Its body is read here and kept for the error.
+    const bodies = new WeakMap<Response, string>();
+    const rateLimited = async (answer: Response): Promise<boolean> => {
+      if (answer.status === 429) return true;
+      if (answer.status !== 500 || method !== "GET") return false;
+      const text = await answer.text().catch(() => "");
+      bodies.set(answer, text);
+      return isRateLimitBody(text);
+    };
+
     let response = await fire();
-    for (let attempt = 1; response.status === 429 && attempt <= retries; attempt++) {
-      await response.body?.cancel().catch(() => undefined);
+    for (let attempt = 1; attempt <= retries && (await rateLimited(response)); attempt++) {
+      if (!response.bodyUsed) await response.body?.cancel().catch(() => undefined);
       // The caller's cancellation also ends the wait between retries.
       await abortableSleep(retryAfterMs(response) ?? backoffMs * attempt, init.signal);
       response = await fire();
     }
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new LexwareApiError({ status: response.status, statusText: response.statusText, method, path, responseBody: body });
+      const text = bodies.get(response) ?? (await response.text().catch(() => ""));
+      throw new LexwareApiError({ status: response.status, statusText: response.statusText, method, path, responseBody: text });
     }
     return response;
   }
@@ -230,8 +267,8 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
       return json<T>(await send(path, { ...init, method: "POST", body: form }, uploadTimeoutMs));
     },
 
-    voucherUrl(id: string) {
-      return `${appUrl}/vouchers#!/VoucherDetail/${id}`;
+    voucherUrl(id: string, kind?: VoucherLinkKind) {
+      return kind ? `${appUrl}/vouchers#!/VoucherView/${VIEW_OF[kind]}/${id}` : `${appUrl}/vouchers#!/VoucherDetail/${id}`;
     },
   };
 }
