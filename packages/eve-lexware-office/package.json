@@ -1,6 +1,6 @@
 {
   "name": "@kevludwig/eve-lexware-office",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "type": "module",
   "eve": {
     "extension": {
@@ -9,7 +9,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "exports": {
     ".": {

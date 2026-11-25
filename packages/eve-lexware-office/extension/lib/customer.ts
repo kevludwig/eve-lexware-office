@@ -9,6 +9,7 @@
 
 import {
   createCustomer,
+  markWriteOutcome,
   describeError,
   findContactByNumber,
   findContactsByName,
@@ -27,6 +28,7 @@ import {
 import { z } from "zod";
 
 import { sentence } from "./format";
+import { DEFAULT_RETRY_HINT, failedWrite, guardedWrite } from "./write-guard";
 import type { Warning } from "./warnings";
 import type { Journal } from "./journal-store";
 
@@ -298,7 +300,7 @@ const isSet = (ids: ReadonlySet<string> | readonly string[]): ids is ReadonlySet
 
 /** Creates the approved customer. `id` keys the journal: a replay does not create twice. */
 export async function executeApprovedCustomer(
-  ops: { client: LexwareClient; journal: Journal },
+  ops: { client: LexwareClient; journal: Journal; /** After „Nichts angelegt;" — default „später erneut versuchen". */ retryHint?: string },
   input: CustomerInput,
   approved: {
     id: string;
@@ -306,6 +308,15 @@ export async function executeApprovedCustomer(
     shownContactIds: ReadonlySet<string> | readonly string[];
     signal?: AbortSignal;
   },
+): Promise<Record<string, unknown>> {
+  return guardedWrite((sending) => createApprovedCustomer(ops, input, approved, sending));
+}
+
+async function createApprovedCustomer(
+  ops: Parameters<typeof executeApprovedCustomer>[0],
+  input: CustomerInput,
+  approved: Parameters<typeof executeApprovedCustomer>[2],
+  sending: () => void,
 ): Promise<Record<string, unknown>> {
   const ids = approved.shownContactIds;
   const shown: ReadonlySet<string> = isSet(ids) ? ids : new Set(ids);
@@ -321,7 +332,7 @@ export async function executeApprovedCustomer(
   try {
     similar = await findContactsByName(ops.client, customerNameOf(input), { size: 5, signal: approved.signal });
   } catch (error) {
-    throw new Error(`Kunde nicht angelegt: Die Suche nach ähnlichen Kontakten ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; die Freigabe später erneut ausführen.`);
+    throw new Error(`Kunde nicht angelegt: Die Suche nach ähnlichen Kontakten ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; ${ops.retryHint ?? DEFAULT_RETRY_HINT}.`);
   }
   const unseen = similar.filter((contact) => !shown.has(contact.id));
   if (unseen.length > 0) {
@@ -333,10 +344,11 @@ export async function executeApprovedCustomer(
 
   await ops.journal.write("customer", approved.id, { status: "pending" });
   let created;
+  sending();
   try {
     created = await createCustomer(ops.client, newCustomerOf(input), approved.signal);
   } catch (error) {
-    throw new Error(`Kunde nicht angelegt: ${describeError(error)}`);
+    throw failedWrite(`Kunde nicht angelegt: ${describeError(error)}`, error);
   }
   await ops.journal.write("customer", approved.id, { status: "created", resourceId: created.id });
 
@@ -619,18 +631,28 @@ export async function executeApprovedCustomerUpdate(
     signal?: AbortSignal;
   },
 ): Promise<Record<string, unknown>> {
+  return guardedWrite((sending) => updateApprovedCustomer(ops, input, approved, sending));
+}
+
+async function updateApprovedCustomer(
+  ops: Parameters<typeof executeApprovedCustomerUpdate>[0],
+  input: CustomerUpdateInput,
+  approved: Parameters<typeof executeApprovedCustomerUpdate>[2],
+  sending: () => void,
+): Promise<Record<string, unknown>> {
   const journal = await ops.journal.read("customer-update", approved.id);
   if (journal?.status === "created") {
     return { contactId: approved.contactId, note: "Wiederaufnahme: Der Kunde war bereits geändert — nichts doppelt geschrieben." };
   }
   await ops.journal.write("customer-update", approved.id, { status: "pending" });
   let updated;
+  sending();
   try {
     // The version the card showed: a contact edited since in Lexware Office is not overwritten.
     updated = await updateCustomer(ops.client, approved.contactId, customerChangesOf(input), { expectedVersion: approved.version, signal: approved.signal });
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Abgebrochen")) throw error;
-    throw new Error(`Kunde nicht geändert: ${describeError(error)}`);
+    if (error instanceof Error && error.message.startsWith("Abgebrochen")) throw markWriteOutcome(error, false);
+    throw failedWrite(`Kunde nicht geändert: ${describeError(error)}`, error);
   }
   await ops.journal.write("customer-update", approved.id, { status: "created", resourceId: updated.id });
   return {

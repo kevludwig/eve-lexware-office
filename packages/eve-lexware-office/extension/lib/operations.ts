@@ -12,6 +12,11 @@
  * order confirmation a draft; `checks` (PrepareOptions) adds the caller's own
  * findings, e.g. a VIES query.
  *
+ * A failed execute says whether the write may have run: `mayHaveRun` on the
+ * error (writeMayHaveRun) is false when it certainly did not — then try again
+ * — and true when it may have: look in Lexware Office first. `retryHint`
+ * (Operations, executeApprovedCustomer) words what follows „Nichts angelegt;".
+ *
  * Nothing here reads the mount's configuration or eve's session, and nothing
  * it imports loads eve: it runs where eve is not installed (test/operations-isolated.test.ts).
  */
@@ -35,6 +40,8 @@ export {
 } from "./customer";
 export { describeWarning, type Warning } from "./warnings";
 export { HOST_CHECK_FAILED } from "./host-checks";
+export { DEFAULT_RETRY_HINT } from "./write-guard";
+export { writeMayHaveRun, type WriteOutcome } from "@kevludwig/lexware-office";
 export { journalIn, type Journal, type JournalEntry } from "./journal-store";
 export { readAccount, readDescription, readInputSchema, type ReadInput } from "./read";
 export {

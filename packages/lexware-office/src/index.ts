@@ -6,6 +6,7 @@ export {
   describeError,
   isRateLimitBody,
   isRateLimitError,
+  isWriteRefusal,
   query,
   type FileUpload,
   type LexwareClient,
@@ -180,3 +181,4 @@ export {
   type Profile,
 } from "./settings.ts";
 export { VAT_ID_PATTERNS, normalizeVatId, vatIdCountry, vatIdProblem } from "./vat-id.ts";
+export { markWriteOutcome, notRun, withWriteOutcome, writeMayHaveRun, type WriteOutcome } from "./write-outcome.ts";

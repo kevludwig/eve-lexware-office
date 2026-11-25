@@ -1,3 +1,5 @@
+import { markWriteOutcome } from "./write-outcome.ts";
+
 /**
  * The HTTP layer of the Lexware Office Public API.
  *
@@ -108,6 +110,11 @@ export function describeError(error: unknown): string {
   return `${error.message}${hint}`;
 }
 
+/** Whether an answer proves the API did not run a write: a 4xx other than 408 (a 429 is not processed). */
+export function isWriteRefusal(error: unknown): boolean {
+  return error instanceof LexwareApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
+}
+
 /** Whether an error body is Lexware's "rate limit exceeded" — it comes with a 500 as well as with a 429. */
 export function isRateLimitBody(body: string): boolean {
   return /rate[ _-]?limit/i.test(body);
@@ -194,10 +201,32 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
    * run it — and, for a GET only, on a 500 "rate limit exceeded". A transport
    * error after a POST is never retried: the voucher may well exist already.
    */
-  async function send(path: string, init: RequestInit, limitMs = timeoutMs): Promise<Response> {
+  async function send(path: string, init: RequestInit, limitMs = timeoutMs, flight: { fired?: boolean } = {}): Promise<Response> {
     const method = init.method ?? "GET";
+    return attempt(path, init, method, limitMs, flight);
+  }
+
+  /**
+   * A call whose error says, for a write, whether it may have run
+   * (write-outcome.ts): not before the request fired, nor after a refusal (a
+   * 4xx other than 408) — a wait after a 429 that the caller aborts left
+   * nothing in flight either. An error reading the answer comes after the write.
+   */
+  async function call<T>(method: string, run: (flight: { fired?: boolean }) => Promise<T>): Promise<T> {
+    const flight = { fired: false };
+    try {
+      return await run(flight);
+    } catch (error) {
+      throw method === "GET" ? error : markWriteOutcome(error, flight.fired && !isWriteRefusal(error));
+    }
+  }
+
+  async function attempt(path: string, init: RequestInit, method: string, limitMs: number, flight: { fired?: boolean }): Promise<Response> {
     const fire = () =>
       schedule(() => {
+        // Cancelled while queued: nothing goes out.
+        if (init.signal?.aborted) return Promise.reject(init.signal.reason);
+        flight.fired = true;
         const timeout = AbortSignal.timeout(limitMs);
         return fetchImpl(`${baseUrl}${path}`, {
           ...init,
@@ -221,6 +250,7 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
     let response = await fire();
     for (let attempt = 1; attempt <= retries && (await rateLimited(response)); attempt++) {
       if (!response.bodyUsed) await response.body?.cancel().catch(() => undefined);
+      flight.fired = false;
       // The caller's cancellation also ends the wait between retries.
       await abortableSleep(retryAfterMs(response) ?? backoffMs * attempt, init.signal);
       response = await fire();
@@ -241,13 +271,20 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
   return {
     async request<T>(path: string, init: RequestInit & { json?: unknown } = {}) {
       const { json: body, ...rest } = init;
-      const response = await send(path, {
-        ...rest,
-        ...(body === undefined
-          ? {}
-          : { body: JSON.stringify(body), headers: { "Content-Type": "application/json", ...rest.headers } }),
+      return call(rest.method ?? "GET", async (flight) => {
+        const response = await send(
+          path,
+          {
+            ...rest,
+            ...(body === undefined
+              ? {}
+              : { body: JSON.stringify(body), headers: { "Content-Type": "application/json", ...rest.headers } }),
+          },
+          timeoutMs,
+          flight,
+        );
+        return json<T>(response);
       });
-      return json<T>(response);
     },
 
     async download(path, init) {
@@ -264,7 +301,7 @@ export function createLexwareClient(options: LexwareClientOptions): LexwareClien
       // An own ArrayBuffer: Blob refuses shared buffers.
       form.set("file", new Blob([Uint8Array.from(file.bytes)], { type: file.mediaType }), file.filename);
       // No Content-Type: fetch sets the multipart boundary.
-      return json<T>(await send(path, { ...init, method: "POST", body: form }, uploadTimeoutMs));
+      return call("POST", async (flight) => json<T>(await send(path, { ...init, method: "POST", body: form }, uploadTimeoutMs, flight)));
     },
 
     voucherUrl(id: string, kind?: VoucherLinkKind) {

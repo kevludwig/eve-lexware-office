@@ -11,6 +11,7 @@ import { runtimeJournal } from "./journal";
 import { client, config } from "./runtime";
 import { executeApprovedSalesDocument, prepareSalesDocument, type SalesInput } from "./sales";
 import { settledOf } from "./state";
+import { EVE_RETRY_HINT } from "./write-guard";
 
 export { HOST_CHECK_FAILED } from "./host-checks";
 
@@ -56,7 +57,7 @@ export function executeSalesDocument(
   input: SalesInput,
   ctx: { callId: string; abortSignal?: AbortSignal },
 ): Promise<Record<string, unknown>> {
-  return executeApprovedSalesDocument({ client: client(), journal: runtimeJournal }, kind, input, {
+  return executeApprovedSalesDocument({ client: client(), journal: runtimeJournal, retryHint: EVE_RETRY_HINT }, kind, input, {
     id: ctx.callId,
     shownOnCard: (url) => wasShownOnCard(ctx.callId, url),
     notes: () => notesOf(ctx.callId),

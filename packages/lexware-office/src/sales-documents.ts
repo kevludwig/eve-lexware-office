@@ -4,6 +4,7 @@
  */
 
 import { LexwareApiError, query, type LexwareClient } from "./client.ts";
+import { notRun } from "./write-outcome.ts";
 import { DUPLICATE_TOTAL_TOLERANCE, netTotal, round2 } from "./money.ts";
 
 export type SalesDocumentKind = "quotation" | "order-confirmation" | "invoice";
@@ -362,7 +363,7 @@ export function salesDocumentProblems(options: NewSalesDocument): string[] {
 
 function assertValidSalesDocument(options: NewSalesDocument): void {
   const problems = salesDocumentProblems(options);
-  if (problems.length > 0) throw new Error(problems.join("; "));
+  if (problems.length > 0) throw notRun(problems.join("; "));
 }
 
 const isDate = (value: string) => !Number.isNaN(new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00Z` : value).getTime());

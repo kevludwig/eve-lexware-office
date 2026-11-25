@@ -260,7 +260,12 @@ describe("the approved capture", () => {
       const api = useApi(vendor("Musterlieferant GmbH"), failing);
       await assert.rejects(
         () => createPurchaseInvoice.execute(input, { callId: `p-${status}`, abortSignal: undefined }),
-        /^Error: Eingangsrechnung nicht erfasst: Die Dublettenprüfung ist fehlgeschlagen — .*Nichts angelegt/,
+        (error: Error & { mayHaveRun?: boolean }) => {
+          // The eve tool keeps its hint: its approval can be run again.
+          assert.match(String(error), /^Error: Eingangsrechnung nicht erfasst: Die Dublettenprüfung ist fehlgeschlagen — .*Nichts angelegt; die Freigabe später erneut ausführen\.$/);
+          assert.equal(error.mayHaveRun, false);
+          return true;
+        },
       );
       assert.equal(api.calls.filter((call) => call.method === "POST").length, 0);
     }

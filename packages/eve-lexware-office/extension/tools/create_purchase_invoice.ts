@@ -30,6 +30,7 @@ import {
 } from "../lib/purchase";
 import { approverPolicy, client, config } from "../lib/runtime";
 import { withCard } from "../lib/with-card";
+import { EVE_RETRY_HINT, guardedWrite } from "../lib/write-guard";
 
 /**
  * Status and tax type are fixed: `unchecked` files the voucher under "Belege
@@ -221,145 +222,149 @@ export default defineTool({
   },
 
   async execute(input, ctx) {
-    const bookedGroups = bookedGroupsOf(input);
-    const totals = totalsOf(bookedGroups);
-    const currency = invoiceCurrencyOf(input);
-    const invoiceGross = totalsOf(input.tax_groups).gross;
-    const conversion = isForeignCurrency(input) ? `${eur(invoiceGross, currency)} laut Rechnung, abgebucht ${eur(totals.gross)} laut Kontoauszug` : null;
-    const fallback = config().attachments;
+    // Every error says whether the voucher may have been written (mayHaveRun).
+    return guardedWrite(async (sending) => {
+      const bookedGroups = bookedGroupsOf(input);
+      const totals = totalsOf(bookedGroups);
+      const currency = invoiceCurrencyOf(input);
+      const invoiceGross = totalsOf(input.tax_groups).gross;
+      const conversion = isForeignCurrency(input) ? `${eur(invoiceGross, currency)} laut Rechnung, abgebucht ${eur(totals.gross)} laut Kontoauszug` : null;
+      const fallback = config().attachments;
 
-    // The attachment is read first, but never stops the capture: numbers
-    // without the original are worth more than no voucher.
-    let attachment: { bytes: Uint8Array; filename: string; mediaType: string } | null = null;
-    let attachmentProblem: string | null = null;
-    if (input.attachment_path) {
-      if (!isAllowedAttachmentPath(input.attachment_path)) {
-        attachmentProblem = `„${input.attachment_path}" ist kein Anhang-Pfad von eve`;
-      } else {
-        let bytes: Uint8Array | null = null;
-        try {
-          bytes = await (await ctx.getSandbox()).readBinaryFile({ path: input.attachment_path });
-        } catch (error) {
-          console.warn(`[lexware] Sandbox read failed: ${describeError(error)}`);
+      // The attachment is read first, but never stops the capture: numbers
+      // without the original are worth more than no voucher.
+      let attachment: { bytes: Uint8Array; filename: string; mediaType: string } | null = null;
+      let attachmentProblem: string | null = null;
+      if (input.attachment_path) {
+        if (!isAllowedAttachmentPath(input.attachment_path)) {
+          attachmentProblem = `„${input.attachment_path}" ist kein Anhang-Pfad von eve`;
+        } else {
+          let bytes: Uint8Array | null = null;
+          try {
+            bytes = await (await ctx.getSandbox()).readBinaryFile({ path: input.attachment_path });
+          } catch (error) {
+            console.warn(`[lexware] Sandbox read failed: ${describeError(error)}`);
+          }
+          if (!bytes && fallback) bytes = await fallback.read(input.attachment_path, ctx.abortSignal).catch(() => null);
+          if (bytes) attachment = { bytes, filename: basename(input.attachment_path), mediaType: mediaTypeOf(input.attachment_path) };
+          else attachmentProblem = `${basename(input.attachment_path)} liegt nicht mehr in der Sandbox${fallback ? " und nicht im Archiv" : ""}`;
         }
-        if (!bytes && fallback) bytes = await fallback.read(input.attachment_path, ctx.abortSignal).catch(() => null);
-        if (bytes) attachment = { bytes, filename: basename(input.attachment_path), mediaType: mediaTypeOf(input.attachment_path) };
-        else attachmentProblem = `${basename(input.attachment_path)} liegt nicht mehr in der Sandbox${fallback ? " und nicht im Archiv" : ""}`;
-      }
-    }
-
-    // A replay of this call finds the voucher and does not write it again.
-    const journal = await readJournal("purchase", ctx.callId);
-    let voucher: { id: string; url: string };
-    let contactNote: string;
-    let categoryNote: string;
-
-    if (journal?.resourceId) {
-      voucher = { id: journal.resourceId, url: client().voucherUrl(journal.resourceId) };
-      contactNote = `${input.supplier_name} (Wiederaufnahme — Beleg existierte bereits)`;
-      categoryNote = "wie beim ersten Lauf — in Lexware Office prüfen";
-    } else {
-      // A voucher that appeared between card and click stops the write; one the card showed was approved knowingly.
-      let existing: Awaited<ReturnType<typeof findPurchaseInvoiceByNumber>> = null;
-      try {
-        existing = await findPurchaseInvoiceByNumber(client(), input.voucher_number, ctx.abortSignal);
-      } catch (error) {
-        // A search that fails cannot say that no duplicate appeared — then nothing is captured.
-        throw new Error(
-          `Eingangsrechnung nicht erfasst: Die Dublettenprüfung ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; die Freigabe später erneut ausführen.`,
-        );
-      }
-      if (existing && !wasShownOnCard(ctx.callId, existing.url)) {
-        throw new Error(
-          `Abgebrochen: Rechnung ${input.voucher_number} ist inzwischen bereits erfasst: ${existing.url}. Nichts angelegt. Schicke ` +
-            "die Rechnung erneut, wenn trotzdem ein zweiter Beleg entstehen soll — dann steht der Fund auf der Karte.",
-        );
       }
 
-      // Without the binding, fail closed: a fresh resolution could book something the card never showed.
-      const target = approvedPurchaseTarget(ctx.callId);
-      if (!target) {
-        throw new Error("Abgebrochen: Die an die Freigabe gebundene Lieferanten- und Kategorienwahl fehlt — nichts angelegt. Rufe das Tool erneut auf.");
+      // A replay of this call finds the voucher and does not write it again.
+      const journal = await readJournal("purchase", ctx.callId);
+      let voucher: { id: string; url: string };
+      let contactNote: string;
+      let categoryNote: string;
+
+      if (journal?.resourceId) {
+        voucher = { id: journal.resourceId, url: client().voucherUrl(journal.resourceId) };
+        contactNote = `${input.supplier_name} (Wiederaufnahme — Beleg existierte bereits)`;
+        categoryNote = "wie beim ersten Lauf — in Lexware Office prüfen";
+      } else {
+        // A voucher that appeared between card and click stops the write; one the card showed was approved knowingly.
+        let existing: Awaited<ReturnType<typeof findPurchaseInvoiceByNumber>> = null;
+        try {
+          existing = await findPurchaseInvoiceByNumber(client(), input.voucher_number, ctx.abortSignal);
+        } catch (error) {
+          // A search that fails cannot say that no duplicate appeared — then nothing is captured.
+          throw new Error(
+            `Eingangsrechnung nicht erfasst: Die Dublettenprüfung ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; ${EVE_RETRY_HINT}.`,
+          );
+        }
+        if (existing && !wasShownOnCard(ctx.callId, existing.url)) {
+          throw new Error(
+            `Abgebrochen: Rechnung ${input.voucher_number} ist inzwischen bereits erfasst: ${existing.url}. Nichts angelegt. Schicke ` +
+              "die Rechnung erneut, wenn trotzdem ein zweiter Beleg entstehen soll — dann steht der Fund auf der Karte.",
+          );
+        }
+
+        // Without the binding, fail closed: a fresh resolution could book something the card never showed.
+        const target = approvedPurchaseTarget(ctx.callId);
+        if (!target) {
+          throw new Error("Abgebrochen: Die an die Freigabe gebundene Lieferanten- und Kategorienwahl fehlt — nichts angelegt. Rufe das Tool erneut auf.");
+        }
+        const categoryOf = (index: number) => target.groupCategories?.[index]?.id ?? target.categoryId;
+        const reverseCharge = (index: number, rate: number) =>
+          rate === 0 && isReverseChargeCategory(target.groupCategories?.[index]?.name ?? target.categoryName);
+        categoryNote = target.groupCategories
+          ? target.groupCategories.map((entry) => entry.name ?? "keine — in Lexware Office zuordnen").join(" / ")
+          : (target.categoryName ?? "keine — in Lexware Office zuordnen");
+
+        const common = {
+          type: "purchaseinvoice",
+          voucherStatus: VOUCHER_STATUS,
+          taxType: TAX_TYPE,
+          voucherNumber: input.voucher_number,
+          voucherDate: input.voucher_date,
+          dueDate: input.due_date,
+          totalGrossAmount: totals.gross,
+          totalTaxAmount: totals.tax,
+          remark: input.remark ?? `Lieferantenrechnung ${input.voucher_number} — ${target.contactName}${conversion ? ` · ${conversion}` : ""}`,
+          voucherItems: bookedGroups.map((group, index) =>
+            reverseCharge(index, group.tax_rate_percent)
+              ? { amount: group.gross_amount, taxAmount: 0, taxRatePercent: REVERSE_CHARGE_TAX_RATE, categoryId: categoryOf(index) }
+              : { amount: group.gross_amount, taxAmount: taxFromGross(group.gross_amount, group.tax_rate_percent), taxRatePercent: group.tax_rate_percent, categoryId: categoryOf(index) },
+          ),
+        } as const;
+
+        await writeJournal("purchase", ctx.callId, { status: "pending" });
+        sending();
+        // No fallback to the collective vendor on an error: a 406 means the payload is off.
+        voucher = target.contactId
+          ? await createVoucher(client(), { ...common, contactId: target.contactId }, ctx.abortSignal)
+          : await createVoucher(client(), { ...common, useCollectiveContact: true, contactName: target.contactName }, ctx.abortSignal);
+        await writeJournal("purchase", ctx.callId, { status: "created", resourceId: voucher.id });
+        contactNote = target.contactId ? target.contactName : `Sammellieferant (${target.contactName})`;
       }
-      const categoryOf = (index: number) => target.groupCategories?.[index]?.id ?? target.categoryId;
-      const reverseCharge = (index: number, rate: number) =>
-        rate === 0 && isReverseChargeCategory(target.groupCategories?.[index]?.name ?? target.categoryName);
-      categoryNote = target.groupCategories
-        ? target.groupCategories.map((entry) => entry.name ?? "keine — in Lexware Office zuordnen").join(" / ")
-        : (target.categoryName ?? "keine — in Lexware Office zuordnen");
 
-      const common = {
-        type: "purchaseinvoice",
-        voucherStatus: VOUCHER_STATUS,
-        taxType: TAX_TYPE,
-        voucherNumber: input.voucher_number,
-        voucherDate: input.voucher_date,
-        dueDate: input.due_date,
-        totalGrossAmount: totals.gross,
-        totalTaxAmount: totals.tax,
-        remark: input.remark ?? `Lieferantenrechnung ${input.voucher_number} — ${target.contactName}${conversion ? ` · ${conversion}` : ""}`,
-        voucherItems: bookedGroups.map((group, index) =>
-          reverseCharge(index, group.tax_rate_percent)
-            ? { amount: group.gross_amount, taxAmount: 0, taxRatePercent: REVERSE_CHARGE_TAX_RATE, categoryId: categoryOf(index) }
-            : { amount: group.gross_amount, taxAmount: taxFromGross(group.gross_amount, group.tax_rate_percent), taxRatePercent: group.tax_rate_percent, categoryId: categoryOf(index) },
-        ),
-      } as const;
-
-      await writeJournal("purchase", ctx.callId, { status: "pending" });
-      // No fallback to the collective vendor on an error: a 406 means the payload is off.
-      voucher = target.contactId
-        ? await createVoucher(client(), { ...common, contactId: target.contactId }, ctx.abortSignal)
-        : await createVoucher(client(), { ...common, useCollectiveContact: true, contactName: target.contactName }, ctx.abortSignal);
-      await writeJournal("purchase", ctx.callId, { status: "created", resourceId: voucher.id });
-      contactNote = target.contactId ? target.contactName : `Sammellieferant (${target.contactName})`;
-    }
-
-    // The voucher stands; a failed attachment is reported, not thrown.
-    let attachmentResult = attachmentProblem ? `ohne Original — ${attachmentProblem}. In Lexware Office am Beleg nachreichen.` : "kein Anhang";
-    if (journal?.status === "attached") {
-      attachmentResult = "bereits angehängt (Wiederaufnahme)";
-    } else if (attachment) {
-      try {
-        await uploadVoucherFile(client(), voucher.id, attachment, ctx.abortSignal);
-        await writeJournal("purchase", ctx.callId, { status: "attached", resourceId: voucher.id });
-        attachmentResult = `${attachment.filename} angehängt`;
-        if (input.attachment_path) await fallback?.release?.(input.attachment_path).catch(() => {});
-      } catch (error) {
-        // A timeout or a dropped connection does not mean the file is missing:
-        // Lexware often finishes the upload after the client has given up.
-        const arrived = await voucherFileIds(client(), voucher.id, ctx.abortSignal).then(
-          (ids) => ids.length > 0,
-          () => false,
-        );
-        if (arrived) {
+      // The voucher stands; a failed attachment is reported, not thrown.
+      let attachmentResult = attachmentProblem ? `ohne Original — ${attachmentProblem}. In Lexware Office am Beleg nachreichen.` : "kein Anhang";
+      if (journal?.status === "attached") {
+        attachmentResult = "bereits angehängt (Wiederaufnahme)";
+      } else if (attachment) {
+        try {
+          await uploadVoucherFile(client(), voucher.id, attachment, ctx.abortSignal);
           await writeJournal("purchase", ctx.callId, { status: "attached", resourceId: voucher.id });
           attachmentResult = `${attachment.filename} angehängt`;
           if (input.attachment_path) await fallback?.release?.(input.attachment_path).catch(() => {});
-        } else {
-          attachmentResult = `${attachment.filename} konnte nicht angehängt werden: ${describeError(error)}`;
+        } catch (error) {
+          // A timeout or a dropped connection does not mean the file is missing:
+          // Lexware often finishes the upload after the client has given up.
+          const arrived = await voucherFileIds(client(), voucher.id, ctx.abortSignal).then(
+            (ids) => ids.length > 0,
+            () => false,
+          );
+          if (arrived) {
+            await writeJournal("purchase", ctx.callId, { status: "attached", resourceId: voucher.id });
+            attachmentResult = `${attachment.filename} angehängt`;
+            if (input.attachment_path) await fallback?.release?.(input.attachment_path).catch(() => {});
+          } else {
+            attachmentResult = `${attachment.filename} konnte nicht angehängt werden: ${describeError(error)}`;
+          }
         }
       }
-    }
 
-    return {
-      voucherId: voucher.id,
-      url: voucher.url,
-      supplier: input.supplier_name,
-      contact: contactNote,
-      voucherNumber: input.voucher_number,
-      voucherDate: input.voucher_date,
-      status: VOUCHER_STATUS,
-      gross: totals.gross,
-      tax: totals.tax,
-      net: totals.net,
-      currency,
-      conversion,
-      declaredGross: input.total_gross_amount,
-      difference: round2(invoiceGross - input.total_gross_amount),
-      category: categoryNote,
-      attachment: attachmentResult,
-      preflightNotes: notesOf(ctx.callId),
-      note: `Der Beleg liegt unter „Belege zur Prüfung" und ist noch nicht gebucht. Netto ${eur(totals.net)}, USt. ${eur(totals.tax)}.`,
-    };
+      return {
+        voucherId: voucher.id,
+        url: voucher.url,
+        supplier: input.supplier_name,
+        contact: contactNote,
+        voucherNumber: input.voucher_number,
+        voucherDate: input.voucher_date,
+        status: VOUCHER_STATUS,
+        gross: totals.gross,
+        tax: totals.tax,
+        net: totals.net,
+        currency,
+        conversion,
+        declaredGross: input.total_gross_amount,
+        difference: round2(invoiceGross - input.total_gross_amount),
+        category: categoryNote,
+        attachment: attachmentResult,
+        preflightNotes: notesOf(ctx.callId),
+        note: `Der Beleg liegt unter „Belege zur Prüfung" und ist noch nicht gebucht. Netto ${eur(totals.net)}, USt. ${eur(totals.tax)}.`,
+      };
+    });
   },
 });

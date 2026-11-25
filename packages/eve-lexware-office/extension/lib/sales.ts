@@ -49,6 +49,7 @@ import {
 import { z } from "zod";
 
 import { sentence } from "./format";
+import { DEFAULT_RETRY_HINT, failedWrite, guardedWrite } from "./write-guard";
 import { runSalesChecks } from "./host-checks";
 import type { Journal } from "./journal-store";
 import type { SalesChecks } from "./sales-tools";
@@ -1025,6 +1026,12 @@ export interface Operations {
    * Give prepareSalesDocument and buildCard the same, so the card says so.
    */
   draftOnly?: boolean;
+  /**
+   * What a stopped write tells the caller to do after „Nichts angelegt;" —
+   * default „später erneut versuchen". The eve tools say „die Freigabe später
+   * erneut ausführen".
+   */
+  retryHint?: string;
 }
 
 export interface Approved {
@@ -1064,6 +1071,16 @@ export async function executeApprovedSalesDocument(
   kind: SalesDocumentKind,
   input: SalesInput,
   approved: Approved,
+): Promise<Record<string, unknown>> {
+  return guardedWrite((sending) => executeSales(ops, kind, input, approved, sending));
+}
+
+async function executeSales(
+  ops: Operations,
+  kind: SalesDocumentKind,
+  input: SalesInput,
+  approved: Approved,
+  sending: () => void,
 ): Promise<Record<string, unknown>> {
   const api = ops.client;
   const ctx = { callId: approved.id, abortSignal: approved.signal };
@@ -1118,7 +1135,7 @@ export async function executeApprovedSalesDocument(
   try {
     duplicate = await findDuplicateSalesDocument(api, { kind, contactId: contact.id, itemsTotalNet: computed, customerOrderNumber: orderNumber, signal: ctx.abortSignal });
   } catch (error) {
-    throw new Error(`${label} nicht angelegt: Die Dublettenprüfung ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; die Freigabe später erneut ausführen.`);
+    throw new Error(`${label} nicht angelegt: Die Dublettenprüfung ist fehlgeschlagen — ${sentence(describeError(error))} Nichts angelegt; ${ops.retryHint ?? DEFAULT_RETRY_HINT}.`);
   }
   const knownDuplicate = duplicate.status === "match" && shown(duplicate.match.id, duplicate.match.url);
   if (duplicate.status === "match" && duplicate.by === "order-number" && orderEntry?.status === "pending" && !knownDuplicate) {
@@ -1138,7 +1155,7 @@ export async function executeApprovedSalesDocument(
   if (duplicate.status === "match" && !knownDuplicate) {
     const what = duplicate.by === "order-number" ? `zur Bestellung Nr. ${orderNumber}` : "mit dieser Positionssumme";
     throw new Error(
-      `Abgebrochen: Inzwischen gibt es bereits ${kind === "invoice" ? "eine" : "ein"} ${label} ${what}: ${duplicate.match.url}. ` +
+      `Abgebrochen: Inzwischen gibt es bereits ${kind === "quotation" ? "ein" : "eine"} ${label} ${what}: ${duplicate.match.url}. ` +
         "Nichts angelegt. Rufe das Tool erneut auf, wenn trotzdem ein weiterer Beleg entstehen soll — dann steht der Fund auf der Karte.",
     );
   }
@@ -1180,9 +1197,10 @@ export async function executeApprovedSalesDocument(
   // A refusal (4xx) proves nothing was written: the order is free again for the next approval.
   const failed = async (error: unknown): Promise<never> => {
     if (orderKey && isRefusal(error)) await ops.journal.write(kind, orderKey, { status: "failed" });
-    throw new Error(`${label} nicht angelegt: ${describeError(error)}`);
+    throw failedWrite(`${label} nicht angelegt: ${describeError(error)}`, error);
   };
   let created;
+  sending();
   try {
     created = await create(linkable ? sourceId : undefined);
   } catch (error) {

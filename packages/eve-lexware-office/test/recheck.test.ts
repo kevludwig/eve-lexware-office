@@ -152,3 +152,21 @@ describe("send_payment_reminder marks a reminder as waiting", () => {
     assert.equal((await ledger().read(invoice.id))?.status, "sent");
   });
 });
+
+describe("an eve tool's stopped write", () => {
+  it("keeps the eve hint and says it did not run", async () => {
+    useApi((call: { method: string; path: string }) => (call.method === "GET" && call.path === "/contacts" ? new Response("", { status: 403 }) : undefined));
+    await assert.rejects(
+      () =>
+        createCustomer.execute(
+          { company_name: "Beispiel GmbH", street: "Musterstraße 1", zip: "12345", city: "Musterstadt", country_code: "DE" },
+          { callId: "call-stop", abortSignal: undefined },
+        ),
+      (error: Error & { mayHaveRun?: boolean }) => {
+        assert.match(String(error), /^Error: Kunde nicht angelegt: Die Suche nach ähnlichen Kontakten ist fehlgeschlagen — .* Nichts angelegt; die Freigabe später erneut ausführen\.$/);
+        assert.equal(error.mayHaveRun, false);
+        return true;
+      },
+    );
+  });
+});

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.1
+
+### Added
+
+- A failed write says whether it may have run: `mayHaveRun` on the error, read with `writeMayHaveRun(error)` (`true`, `false`, or `undefined` when unclassified — treat that as `true`). `false` — certainly not run: stopped before the request (the checks of `createCustomer`, `updateCustomer`, `createSalesDocument`, `createVoucher`; a contact changed since `expectedVersion`; a caller who aborted while the request was queued or waiting after a 429), or refused by the API (a 4xx other than 408). `true` — it may have run: a timeout, a dropped connection, a 5xx, an answer that does not parse. `sendReminder` likewise: `false` up to the mail call and for `MailNotSentError`, `true` for any other failure while sending. The field sits on the error as thrown (non-enumerable); classes, names and messages are unchanged — hosts no longer need to match the German text. Reads stay unclassified. `WriteOutcome`, `markWriteOutcome`, `notRun`, `withWriteOutcome`, `isWriteRefusal`.
+- `MailNotSentError.mayHaveRun` is `false`.
+
+### Note for clients of your own
+
+- **A `LexwareClient` you implement yourself — e.g. a wrapper around `createLexwareClient` — must pass `kind` through in `voucherUrl(id, kind)`** (since 0.6.0). A wrapper that drops it keeps producing the old `#!/VoucherDetail/<id>` links for sales documents. Its errors are not classified unless they come from `createLexwareClient`'s client.
+
+### Changed
+
+- `CHANGELOG.md` is part of the npm package.
+
 ## 0.6.0
 
 ### Achtung beim Update

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.12.0
+
+### Achtung beim Update
+
+- **`./operations` words its retry hint neutrally.** Where a stopped write said „Nichts angelegt; die Freigabe später erneut ausführen.", `executeApprovedSalesDocument` and `executeApprovedCustomer` now say „Nichts angelegt; später erneut versuchen." — or the host's own text from `retryHint` (`Operations.retryHint`, and the first argument of `executeApprovedCustomer`). The eve tools keep „die Freigabe später erneut ausführen": their approval can be run again. A host that replaced the old wording can drop that and pass `retryHint` instead.
+- Requires `@kevludwig/lexware-office` ^0.6.1.
+
+### Added
+
+- Every error of an approved write says whether the write may have run: `mayHaveRun` on the error, read with `writeMayHaveRun(error)` (exported from `./operations`, with the type `WriteOutcome`). `false` — certainly nothing written: everything up to the request (a failed duplicate or similarity search, a duplicate the card did not show, an incomplete check with an order number, a missing print layout or article, a contact changed since the card, an eve binding that is missing) and a refusal by the API (4xx other than 408); then trying again is safe. `true` — it may have run: a timeout, a dropped connection or a 5xx on the request, or an error after it (e.g. writing the journal); look in Lexware Office before trying again. Covers `executeApprovedSalesDocument`, `executeApprovedCustomer`, `executeApprovedCustomerUpdate` and the tools `create_quotation`, `create_order_confirmation`, `create_invoice`, `create_customer`, `update_customer`, `create_purchase_invoice` and `send_payment_reminder` (`false` up to the mail call). Messages and error classes are unchanged — replace matching on „nicht angelegt:" with the field.
+- `retryHint` and `DEFAULT_RETRY_HINT` („später erneut versuchen") in `./operations`.
+
+### Fixed
+
+- „Abgebrochen: Inzwischen gibt es bereits eine Auftragsbestätigung …": the article was „ein" for order confirmations (only a quotation is „ein Angebot").
+
+### Changed
+
+- `CHANGELOG.md` is part of the npm package.
+
 ## 0.11.0
 
 ### Achtung beim Update
@@ -17,6 +37,8 @@
 
 - **Document links change** (with `@kevludwig/lexware-office` 0.6.0): links to sales documents — in results, on the card, and in `shownDuplicates(warnings)` — are now `#!/VoucherView/Order|Invoice|Quotation/<id>` instead of `#!/VoucherDetail/<id>`. `executeApprovedSalesDocument` asks `shownOnCard` with both forms, so an approval pending across the update still goes ahead at a duplicate its card showed. Code of your own that compares stored links — e.g. a pending action's `shownDuplicates` against a fresh search, or links saved in your records — must accept both forms or compare document ids.
 - **A failed duplicate search now stops an approved write** (see Fixed). Consumers that sort failures into "unclear whether created" by the marker „nicht angelegt:" should treat „Die Dublettenprüfung ist fehlgeschlagen" and „Die Suche nach ähnlichen Kontakten ist fehlgeschlagen" as "nothing sent".
+- **Pass the card's findings as `Approved.warnings`** (note added with 0.12.0). `executeApprovedSalesDocument` needs the warnings the card showed: without them, every document with a `customer_order_number` stops („… ist unvollständig … und die Karte hat das nicht gezeigt") as soon as its card showed „⚠ Dublettenprüfung: unvollständig" — the write cannot tell the card said so. They also carry the articles the card read (`article-resolved`), which are otherwise read again. Hand over exactly the list `prepareSalesDocument` returned, as the eve tools do. From 0.12.0 on, such a stop carries `mayHaveRun: false`.
+- **Clients of your own:** a `LexwareClient` you implement yourself must pass `kind` through in `voucherUrl(id, kind)` (`@kevludwig/lexware-office` 0.6.0) — a wrapper that drops it keeps producing `#!/VoucherDetail/<id>` links for created documents and results.
 
 ### Fixed
 

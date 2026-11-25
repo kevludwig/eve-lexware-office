@@ -21,6 +21,7 @@ import { withCard } from "../lib/with-card";
 import { saveWarnings, type Warning } from "../lib/findings";
 import { EARLY_TITLE } from "../lib/warnings";
 import { bindReminderTarget, boundReminderTarget } from "../lib/state";
+import { guardedWrite } from "../lib/write-guard";
 
 const inputSchema = z
   .object({
@@ -160,71 +161,75 @@ export default defineTool({
   },
 
   async execute(_input, ctx) {
-    // Bound at approval time; without it, fail closed — a fresh resolution
-    // could reach someone the card never showed.
-    const target = boundReminderTarget(ctx.callId);
-    if (!target) throw new Error("Abgebrochen: Die an die Freigabe gebundenen Angaben fehlen — nichts verschickt.");
-    const sendMail = config().reminders.sendMail;
-    if (!sendMail) throw new Error("Abgebrochen: Der Mailversand ist nicht eingerichtet (reminders.sendMail) — nichts verschickt.");
+    // Every error says whether the mail may have left (mayHaveRun).
+    return guardedWrite(async (sending) => {
+      // Bound at approval time; without it, fail closed — a fresh resolution
+      // could reach someone the card never showed.
+      const target = boundReminderTarget(ctx.callId);
+      if (!target) throw new Error("Abgebrochen: Die an die Freigabe gebundenen Angaben fehlen — nichts verschickt.");
+      const sendMail = config().reminders.sendMail;
+      if (!sendMail) throw new Error("Abgebrochen: Der Mailversand ist nicht eingerichtet (reminders.sendMail) — nichts verschickt.");
 
-    // A replay that finds this call started does not send again.
-    const journal = await readJournal("reminder", ctx.callId);
-    if (journal) {
-      if (journal.status !== "created") {
-        return { sent: false, note: "Wiederaufnahme nach Abbruch: Ob die Erinnerung rausging, ist unklar. Im Postausgang nachsehen." };
+      // A replay that finds this call started does not send again.
+      const journal = await readJournal("reminder", ctx.callId);
+      if (journal) {
+        if (journal.status !== "created") {
+          return { sent: false, note: "Wiederaufnahme nach Abbruch: Ob die Erinnerung rausging, ist unklar. Im Postausgang nachsehen." };
+        }
+        await ledger()
+          .write({ invoiceId: target.invoiceId, voucherNumber: target.voucherNumber, status: "sent", recipient: target.to, sessionId: ctx.session.id })
+          .catch(() => {});
+        // The effect as recorded when the mail went out; an entry from before
+        // it was recorded gives what the approval fixed, and null for the rest.
+        const effect = journal.effect ?? paymentReminderEffect(target, null);
+        return {
+          sent: true,
+          to: effect.to,
+          cc: effect.cc,
+          test: effect.test,
+          invoice: effect.invoice,
+          openAmount: effect.amount,
+          effect,
+          note: journal.effect
+            ? "Wiederaufnahme: Die Erinnerung war bereits verschickt."
+            : "Wiederaufnahme: Die Erinnerung war bereits verschickt. Betrag und Inhalt sind dazu nicht mehr bekannt.",
+        };
       }
-      await ledger()
-        .write({ invoiceId: target.invoiceId, voucherNumber: target.voucherNumber, status: "sent", recipient: target.to, sessionId: ctx.session.id })
-        .catch(() => {});
-      // The effect as recorded when the mail went out; an entry from before
-      // it was recorded gives what the approval fixed, and null for the rest.
-      const effect = journal.effect ?? paymentReminderEffect(target, null);
+
+      await writeJournal("reminder", ctx.callId, { status: "pending" });
+      sending();
+      const outcome = await sendReminder(client(), ledger(), target, {
+        render: renderReminder(),
+        sendMail,
+        owner: ctx.callId,
+        sessionId: ctx.session.id,
+        signal: ctx.abortSignal,
+      });
+      if (!outcome.sent) {
+        return {
+          sent: false,
+          note:
+            outcome.reason === "paid"
+              ? `Rechnung ${target.voucherNumber} ist inzwischen nicht mehr überfällig — nichts verschickt.`
+              : `Zu ${target.voucherNumber} ist über eine andere Freigabe schon eine Erinnerung rausgegangen oder unterwegs — nichts verschickt.`,
+        };
+      }
+      // What went out, in a fixed shape an app's protocol keeps as it is.
+      const effect = paymentReminderEffect(target, outcome);
+      await writeJournal("reminder", ctx.callId, { status: "created", resourceId: target.invoiceId, effect });
       return {
         sent: true,
-        to: effect.to,
-        cc: effect.cc,
-        test: effect.test,
-        invoice: effect.invoice,
-        openAmount: effect.amount,
+        to: target.to,
+        cc: target.cc ?? [],
+        test: target.test,
+        invoice: target.voucherNumber,
+        openAmount: outcome.openAmount,
+        attachment: outcome.attachment,
         effect,
-        note: journal.effect
-          ? "Wiederaufnahme: Die Erinnerung war bereits verschickt."
-          : "Wiederaufnahme: Die Erinnerung war bereits verschickt. Betrag und Inhalt sind dazu nicht mehr bekannt.",
+        note: target.test
+          ? `Testversand an ${target.to}. Im Echtbetrieb ginge die Erinnerung an ${target.customer ?? "den Kunden (keine Adresse hinterlegt)"}.`
+          : `Erinnerung an ${target.to} verschickt.`,
       };
-    }
-
-    await writeJournal("reminder", ctx.callId, { status: "pending" });
-    const outcome = await sendReminder(client(), ledger(), target, {
-      render: renderReminder(),
-      sendMail,
-      owner: ctx.callId,
-      sessionId: ctx.session.id,
-      signal: ctx.abortSignal,
     });
-    if (!outcome.sent) {
-      return {
-        sent: false,
-        note:
-          outcome.reason === "paid"
-            ? `Rechnung ${target.voucherNumber} ist inzwischen nicht mehr überfällig — nichts verschickt.`
-            : `Zu ${target.voucherNumber} ist über eine andere Freigabe schon eine Erinnerung rausgegangen oder unterwegs — nichts verschickt.`,
-      };
-    }
-    // What went out, in a fixed shape an app's protocol keeps as it is.
-    const effect = paymentReminderEffect(target, outcome);
-    await writeJournal("reminder", ctx.callId, { status: "created", resourceId: target.invoiceId, effect });
-    return {
-      sent: true,
-      to: target.to,
-      cc: target.cc ?? [],
-      test: target.test,
-      invoice: target.voucherNumber,
-      openAmount: outcome.openAmount,
-      attachment: outcome.attachment,
-      effect,
-      note: target.test
-        ? `Testversand an ${target.to}. Im Echtbetrieb ginge die Erinnerung an ${target.customer ?? "den Kunden (keine Adresse hinterlegt)"}.`
-        : `Erinnerung an ${target.to} verschickt.`,
-    };
   },
 });

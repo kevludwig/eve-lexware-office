@@ -1,3 +1,4 @@
+import { notRun } from "@kevludwig/lexware-office";
 import { defineTool } from "eve/tools";
 
 import { customerUpdateDescription, customerUpdateInputSchema, executeApprovedCustomerUpdate, prepareCustomerUpdate, type CustomerUpdateInput } from "../lib/customer";
@@ -24,7 +25,7 @@ export default defineTool({
 
   async execute(input, ctx) {
     const target = boundCustomerUpdate(ctx.callId);
-    if (!target) throw new Error("Abgebrochen: Die Freigabe gehört zu keinem gelesenen Kontakt. Nichts geändert. Rufe das Tool erneut auf.");
+    if (!target) throw notRun("Abgebrochen: Die Freigabe gehört zu keinem gelesenen Kontakt. Nichts geändert. Rufe das Tool erneut auf.");
     return executeApprovedCustomerUpdate({ client: client(), journal: runtimeJournal }, input, { id: ctx.callId, ...target, signal: ctx.abortSignal });
   },
 });

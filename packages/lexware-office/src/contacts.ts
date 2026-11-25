@@ -7,6 +7,7 @@
  */
 
 import { query, type LexwareClient } from "./client.ts";
+import { markWriteOutcome, notRun } from "./write-outcome.ts";
 
 export interface Contact {
   id: string;
@@ -401,11 +402,11 @@ export async function createCustomer(
   signal?: AbortSignal,
 ): Promise<CreatedCustomer> {
   if (Boolean(input.company) === Boolean(input.person)) {
-    throw new Error("Ein Kunde ist entweder eine Firma oder eine Person.");
+    throw notRun("Ein Kunde ist entweder eine Firma oder eine Person.");
   }
   const payload = newCustomerBody(input);
   const problems = contactProblems(payload as Parameters<typeof contactProblems>[0]);
-  if (problems.length > 0) throw new Error(problems.join(" "));
+  if (problems.length > 0) throw notRun(problems.join(" "));
 
   const created = await client.request<{ id: string }>("/contacts", { method: "POST", json: payload, signal });
   const fallbackName = input.company?.name ?? input.person?.lastName ?? "unbekannt";
@@ -510,10 +511,10 @@ function flatten(contact: Partial<ContactDetails>): Map<string, string> {
 export function planCustomerUpdate(contact: ContactDetails, changes: CustomerChanges): { body: Record<string, unknown>; changes: ContactChange[] } {
   const blocked = updateBlockers(contact);
   if (blocked.length > 0) {
-    throw new Error(`Lexware Office lässt diesen Kontakt über die Schnittstelle nicht ändern: mehr als ein Eintrag in ${blocked.join(", ")}. Bitte in Lexware Office bearbeiten.`);
+    throw notRun(`Lexware Office lässt diesen Kontakt über die Schnittstelle nicht ändern: mehr als ein Eintrag in ${blocked.join(", ")}. Bitte in Lexware Office bearbeiten.`);
   }
-  if (changes.company && !contact.company) throw new Error("Der Kontakt ist eine Person; Firmenangaben lassen sich nicht setzen.");
-  if (changes.person && !contact.person) throw new Error("Der Kontakt ist eine Firma; Personenangaben lassen sich nicht setzen.");
+  if (changes.company && !contact.company) throw notRun("Der Kontakt ist eine Person; Firmenangaben lassen sich nicht setzen.");
+  if (changes.person && !contact.person) throw notRun("Der Kontakt ist eine Firma; Personenangaben lassen sich nicht setzen.");
 
   const next: Partial<ContactDetails> = {
     version: contact.version,
@@ -553,7 +554,7 @@ export function planCustomerUpdate(contact: ContactDetails, changes: CustomerCha
   if (filled(note)) next.note = note;
 
   const problems = contactProblems(next as Parameters<typeof contactProblems>[0]);
-  if (problems.length > 0) throw new Error(problems.join(" "));
+  if (problems.length > 0) throw notRun(problems.join(" "));
 
   const before = flatten(contact);
   const after = flatten(next);
@@ -584,9 +585,12 @@ export async function updateCustomer(
   changes: CustomerChanges,
   options: { expectedVersion?: number; signal?: AbortSignal } = {},
 ): Promise<UpdatedCustomer> {
-  const contact = await getContactDetails(client, id, options.signal);
+  // Everything up to the PUT writes nothing.
+  const contact = await getContactDetails(client, id, options.signal).catch((error: unknown) => {
+    throw markWriteOutcome(error, false);
+  });
   if (options.expectedVersion !== undefined && contact.version !== options.expectedVersion) {
-    throw new Error(
+    throw notRun(
       `Abgebrochen: Der Kontakt wurde inzwischen in Lexware Office geändert (Version ${contact.version} statt ${options.expectedVersion}). Nichts geändert.`,
     );
   }

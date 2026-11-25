@@ -37,6 +37,9 @@ export type SendReminderMail = (mail: ReminderMail, signal?: AbortSignal) => Pro
  * round then stays taken, since a second reminder is worse than none.
  */
 export class MailNotSentError extends Error {
+  /** Certainly not sent (write-outcome.ts). */
+  readonly mayHaveRun = false;
+
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
     this.name = "MailNotSentError";

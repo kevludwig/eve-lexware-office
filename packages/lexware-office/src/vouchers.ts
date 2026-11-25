@@ -5,6 +5,7 @@
  */
 
 import { listPostingCategories } from "./categories.ts";
+import { notRun } from "./write-outcome.ts";
 import { query, type FileUpload, type LexwareClient } from "./client.ts";
 import { round2 } from "./money.ts";
 
@@ -63,13 +64,13 @@ export interface CreatedVoucher {
 /** Creates a voucher. `shippingDate` stays unset: the API allows it only for sales vouchers. */
 export async function createVoucher(client: LexwareClient, options: CreateVoucherOptions, signal?: AbortSignal): Promise<CreatedVoucher> {
   if (options.voucherStatus === "unchecked" && options.taxType === "net") {
-    throw new Error(
+    throw notRun(
       "Ein Beleg mit Status 'unchecked' darf nicht taxType 'net' haben — die API verbietet die Kombination. " +
         "Bruttobeträge übergeben (taxType 'gross') oder den Beleg mit Status 'open' vollständig erfassen.",
     );
   }
   if (!options.useCollectiveContact && !options.contactId) {
-    throw new Error("Beleg ohne Kontakt: entweder useCollectiveContact setzen oder eine contactId übergeben.");
+    throw notRun("Beleg ohne Kontakt: entweder useCollectiveContact setzen oder eine contactId übergeben.");
   }
 
   const payload: Record<string, unknown> = {

@@ -21,6 +21,7 @@ import { downloadInvoicePdf, findOverdueInvoice, findOverdueInvoices, type Overd
 import { createHash } from "node:crypto";
 import { MailNotSentError, type RenderReminderMail, type ReminderMail, type SendReminderMail } from "./reminder-mail.ts";
 import { keySegment, type JsonStore } from "./store.ts";
+import { markWriteOutcome } from "./write-outcome.ts";
 
 export interface ReminderPolicy {
   /** Days past the reminder due date before a first reminder. Default: 3. */
@@ -371,6 +372,31 @@ export async function sendReminder(
     signal?: AbortSignal;
   },
 ): Promise<SendReminderOutcome> {
+  // An error says whether the mail may have left (write-outcome.ts): not before the mail call.
+  let sent = false;
+  try {
+    return await sendReminderOnce(client, ledger, target, options, () => {
+      sent = true;
+    });
+  } catch (error) {
+    throw markWriteOutcome(error, sent);
+  }
+}
+
+async function sendReminderOnce(
+  client: LexwareClient,
+  ledger: ReminderLedger,
+  target: ReminderTarget,
+  options: {
+    render: RenderReminderMail;
+    sendMail: SendReminderMail;
+    /** Who sends — recorded with the claim, e.g. a tool call id. */
+    owner: string;
+    sessionId?: string;
+    signal?: AbortSignal;
+  },
+  sending: () => void,
+): Promise<SendReminderOutcome> {
   const still = await findOverdueInvoice(client, target.invoiceId, options.signal);
   if (!still) return { sent: false, reason: "paid" };
 
@@ -395,6 +421,7 @@ export async function sendReminder(
     throw error;
   }
 
+  sending();
   try {
     await options.sendMail(mail, options.signal);
   } catch (error) {

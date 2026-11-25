@@ -6,6 +6,7 @@ import { runtimeJournal } from "../lib/journal";
 import { approverPolicy, client } from "../lib/runtime";
 import { rememberShownContacts, shownContactsOf } from "../lib/state";
 import { withCard } from "../lib/with-card";
+import { EVE_RETRY_HINT } from "../lib/write-guard";
 
 export default defineTool({
   description: customerDescription,
@@ -22,7 +23,7 @@ export default defineTool({
   },
 
   async execute(input, ctx) {
-    return executeApprovedCustomer({ client: client(), journal: runtimeJournal }, input, {
+    return executeApprovedCustomer({ client: client(), journal: runtimeJournal, retryHint: EVE_RETRY_HINT }, input, {
       id: ctx.callId,
       shownContactIds: shownContactsOf(ctx.callId),
       signal: ctx.abortSignal,
